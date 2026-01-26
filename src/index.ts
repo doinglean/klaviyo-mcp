@@ -128,3 +128,7 @@ main().catch((error) => {
   console.error('Fatal error:', error);
   process.exit(1);
 });
+
+// Export for direct usage
+export { KlaviyoClient, KlaviyoError, KlaviyoRateLimitError } from './api/client.js';
+export { getAllTools, handleToolCall } from './tools/index.js';

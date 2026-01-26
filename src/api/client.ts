@@ -165,24 +165,23 @@ export class KlaviyoClient {
     }
   }
 
-  // Profile methods
-  async listProfiles(options: {
+  // Helper to build filter string
+  private buildProfileFilter(options: {
     email?: string;
     phone_number?: string;
     external_id?: string;
+    id?: string;
     created_after?: string;
     created_before?: string;
     updated_after?: string;
     updated_before?: string;
-    page_size?: number;
-    page_cursor?: string;
-  } = {}): Promise<ProfileListResponse> {
-    const params: Record<string, string | number | undefined> = {
-      'page[size]': options.page_size,
-      'page[cursor]': options.page_cursor,
-    };
+    filter?: string;
+  }): string | undefined {
+    // If raw filter provided, use it directly
+    if (options.filter) {
+      return options.filter;
+    }
 
-    // Build filter string
     const filters: string[] = [];
     if (options.email) {
       filters.push(`equals(email,"${options.email}")`);
@@ -192,6 +191,9 @@ export class KlaviyoClient {
     }
     if (options.external_id) {
       filters.push(`equals(external_id,"${options.external_id}")`);
+    }
+    if (options.id) {
+      filters.push(`equals(id,"${options.id}")`);
     }
     if (options.created_after) {
       filters.push(`greater-than(created,${options.created_after})`);
@@ -206,28 +208,108 @@ export class KlaviyoClient {
       filters.push(`less-than(updated,${options.updated_before})`);
     }
 
-    if (filters.length > 0) {
-      params['filter'] = filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+    if (filters.length === 0) return undefined;
+    return filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+  }
+
+  // Profile methods
+  async listProfiles(options: {
+    email?: string;
+    phone_number?: string;
+    external_id?: string;
+    id?: string;
+    created_after?: string;
+    created_before?: string;
+    updated_after?: string;
+    updated_before?: string;
+    filter?: string;
+    sort?: string;
+    additional_fields?: string[];
+    fields_profile?: string[];
+    page_size?: number;
+    page_cursor?: string;
+  } = {}): Promise<ProfileListResponse> {
+    const params: Record<string, string | number | undefined> = {
+      'page[size]': options.page_size,
+      'page[cursor]': options.page_cursor,
+    };
+
+    // Build filter
+    const filter = this.buildProfileFilter(options);
+    if (filter) {
+      params['filter'] = filter;
+    }
+
+    // Sort
+    if (options.sort) {
+      params['sort'] = options.sort;
+    }
+
+    // Additional fields
+    if (options.additional_fields?.length) {
+      params['additional-fields[profile]'] = options.additional_fields.join(',');
+    }
+
+    // Sparse fieldsets
+    if (options.fields_profile?.length) {
+      params['fields[profile]'] = options.fields_profile.join(',');
     }
 
     return this.request<ProfileListResponse>('/api/profiles', { params });
   }
 
-  async getProfile(profileId: string): Promise<ProfileResponse> {
-    return this.request<ProfileResponse>(`/api/profiles/${profileId}`);
+  async getProfile(profileId: string, options: {
+    additional_fields?: string[];
+    include?: string[];
+    fields_profile?: string[];
+    fields_list?: string[];
+    fields_segment?: string[];
+  } = {}): Promise<ProfileResponse> {
+    const params: Record<string, string | number | undefined> = {};
+
+    if (options.additional_fields?.length) {
+      params['additional-fields[profile]'] = options.additional_fields.join(',');
+    }
+    if (options.include?.length) {
+      params['include'] = options.include.join(',');
+    }
+    if (options.fields_profile?.length) {
+      params['fields[profile]'] = options.fields_profile.join(',');
+    }
+    if (options.fields_list?.length) {
+      params['fields[list]'] = options.fields_list.join(',');
+    }
+    if (options.fields_segment?.length) {
+      params['fields[segment]'] = options.fields_segment.join(',');
+    }
+
+    return this.request<ProfileResponse>(`/api/profiles/${profileId}`, { params });
   }
 
-  async createProfile(input: CreateProfileInput): Promise<ProfileResponse> {
+  async createProfile(
+    input: CreateProfileInput,
+    options: { additional_fields?: string[] } = {}
+  ): Promise<ProfileResponse> {
     const body = {
       data: {
         type: 'profile',
         attributes: input,
       },
     };
-    return this.request<ProfileResponse>('/api/profiles', { method: 'POST', body });
+
+    const params: Record<string, string | number | undefined> = {};
+    if (options.additional_fields?.length) {
+      params['additional-fields[profile]'] = options.additional_fields.join(',');
+    }
+
+    return this.request<ProfileResponse>('/api/profiles', { method: 'POST', body, params });
   }
 
-  async updateProfile(profileId: string, input: UpdateProfileInput): Promise<ProfileResponse> {
+  async updateProfile(
+    profileId: string,
+    input: UpdateProfileInput,
+    options: { additional_fields?: string[] } = {}
+  ): Promise<ProfileResponse> {
     const body = {
       data: {
         type: 'profile',
@@ -235,7 +317,80 @@ export class KlaviyoClient {
         attributes: input,
       },
     };
-    return this.request<ProfileResponse>(`/api/profiles/${profileId}`, { method: 'PATCH', body });
+
+    const params: Record<string, string | number | undefined> = {};
+    if (options.additional_fields?.length) {
+      params['additional-fields[profile]'] = options.additional_fields.join(',');
+    }
+
+    return this.request<ProfileResponse>(`/api/profiles/${profileId}`, { method: 'PATCH', body, params });
+  }
+
+  async upsertProfile(input: {
+    email?: string;
+    phone_number?: string;
+    external_id?: string;
+    first_name?: string;
+    last_name?: string;
+    organization?: string;
+    title?: string;
+    image?: string;
+    location?: {
+      address1?: string;
+      address2?: string;
+      city?: string;
+      country?: string;
+      region?: string;
+      zip?: string;
+      timezone?: string;
+    };
+    properties?: Record<string, unknown>;
+  }): Promise<ProfileResponse> {
+    const body = {
+      data: {
+        type: 'profile',
+        attributes: input,
+      },
+    };
+    return this.request<ProfileResponse>('/api/profile-import', { method: 'POST', body });
+  }
+
+  async mergeProfiles(sourceProfileId: string, destinationProfileId: string): Promise<ProfileResponse> {
+    const body = {
+      data: {
+        type: 'profile-merge',
+        id: sourceProfileId,
+        relationships: {
+          profile: {
+            data: {
+              type: 'profile',
+              id: destinationProfileId,
+            },
+          },
+        },
+      },
+    };
+    return this.request<ProfileResponse>('/api/profile-merge', { method: 'POST', body });
+  }
+
+  async getProfileLists(profileId: string, options: {
+    fields_list?: string[];
+  } = {}): Promise<ListListResponse> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_list?.length) {
+      params['fields[list]'] = options.fields_list.join(',');
+    }
+    return this.request<ListListResponse>(`/api/profiles/${profileId}/lists`, { params });
+  }
+
+  async getProfileSegments(profileId: string, options: {
+    fields_segment?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_segment?.length) {
+      params['fields[segment]'] = options.fields_segment.join(',');
+    }
+    return this.request<unknown>(`/api/profiles/${profileId}/segments`, { params });
   }
 
   async subscribeProfiles(options: {
@@ -285,6 +440,52 @@ export class KlaviyoClient {
     });
   }
 
+  async unsubscribeProfiles(options: {
+    listId: string;
+    profiles: Array<{ email?: string; phone_number?: string }>;
+    emailUnsubscribe?: boolean;
+    smsUnsubscribe?: boolean;
+  }): Promise<BulkJobResponse> {
+    const unsubscriptions: Record<string, unknown> = {};
+
+    if (options.emailUnsubscribe !== false) {
+      unsubscriptions.email = { marketing: { consent: 'UNSUBSCRIBED' } };
+    }
+    if (options.smsUnsubscribe) {
+      unsubscriptions.sms = { marketing: { consent: 'UNSUBSCRIBED' } };
+    }
+
+    const body = {
+      data: {
+        type: 'profile-subscription-bulk-delete-job',
+        attributes: {
+          profiles: {
+            data: options.profiles.map(p => ({
+              type: 'profile',
+              attributes: {
+                email: p.email,
+                phone_number: p.phone_number,
+              },
+            })),
+          },
+        },
+        relationships: {
+          list: {
+            data: {
+              type: 'list',
+              id: options.listId,
+            },
+          },
+        },
+      },
+    };
+
+    return this.request<BulkJobResponse>('/api/profile-subscription-bulk-delete-jobs', {
+      method: 'POST',
+      body,
+    });
+  }
+
   async suppressProfiles(profiles: Array<{ email?: string; phone_number?: string }>): Promise<BulkJobResponse> {
     const body = {
       data: {
@@ -309,21 +510,123 @@ export class KlaviyoClient {
     });
   }
 
+  async unsuppressProfiles(profiles: Array<{ email?: string; phone_number?: string }>): Promise<BulkJobResponse> {
+    const body = {
+      data: {
+        type: 'profile-suppression-bulk-delete-job',
+        attributes: {
+          profiles: {
+            data: profiles.map(p => ({
+              type: 'profile',
+              attributes: {
+                email: p.email,
+                phone_number: p.phone_number,
+              },
+            })),
+          },
+        },
+      },
+    };
+
+    return this.request<BulkJobResponse>('/api/profile-suppression-bulk-delete-jobs', {
+      method: 'POST',
+      body,
+    });
+  }
+
   // List methods
-  // Note: Klaviyo's /lists endpoint does NOT support page[size] or additional-fields, only page[cursor]
-  // To get profile_count, use getList() for individual lists
-  async listLists(options: { page_cursor?: string } = {}): Promise<ListListResponse> {
+  async listLists(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    created_after?: string;
+    updated_after?: string;
+    filter?: string;
+    sort?: string;
+    include?: string[];
+    fields_list?: string[];
+    fields_flow?: string[];
+    fields_tag?: string[];
+    page_cursor?: string;
+  } = {}): Promise<ListListResponse> {
     const params: Record<string, string | number | undefined> = {
       'page[cursor]': options.page_cursor,
     };
+
+    // Build filter
+    if (options.filter) {
+      params['filter'] = options.filter;
+    } else {
+      const filters: string[] = [];
+      if (options.name) {
+        filters.push(`equals(name,"${options.name}")`);
+      }
+      if (options.name_contains) {
+        filters.push(`any(name,["${options.name_contains}"])`);
+      }
+      if (options.id) {
+        filters.push(`equals(id,"${options.id}")`);
+      }
+      if (options.created_after) {
+        filters.push(`greater-than(created,${options.created_after})`);
+      }
+      if (options.updated_after) {
+        filters.push(`greater-than(updated,${options.updated_after})`);
+      }
+      if (filters.length > 0) {
+        params['filter'] = filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+      }
+    }
+
+    // Sort
+    if (options.sort) {
+      params['sort'] = options.sort;
+    }
+
+    // Include
+    if (options.include?.length) {
+      params['include'] = options.include.join(',');
+    }
+
+    // Sparse fieldsets
+    if (options.fields_list?.length) {
+      params['fields[list]'] = options.fields_list.join(',');
+    }
+    if (options.fields_flow?.length) {
+      params['fields[flow]'] = options.fields_flow.join(',');
+    }
+    if (options.fields_tag?.length) {
+      params['fields[tag]'] = options.fields_tag.join(',');
+    }
+
     return this.request<ListListResponse>('/api/lists', { params });
   }
 
-  async getList(listId: string, includeProfileCount: boolean = true): Promise<ListResponse> {
+  async getList(listId: string, options: {
+    include_profile_count?: boolean;
+    include?: string[];
+    fields_list?: string[];
+    fields_flow?: string[];
+    fields_tag?: string[];
+  } = {}): Promise<ListResponse> {
     const params: Record<string, string | number | undefined> = {};
-    if (includeProfileCount) {
+
+    if (options.include_profile_count !== false) {
       params['additional-fields[list]'] = 'profile_count';
     }
+    if (options.include?.length) {
+      params['include'] = options.include.join(',');
+    }
+    if (options.fields_list?.length) {
+      params['fields[list]'] = options.fields_list.join(',');
+    }
+    if (options.fields_flow?.length) {
+      params['fields[flow]'] = options.fields_flow.join(',');
+    }
+    if (options.fields_tag?.length) {
+      params['fields[tag]'] = options.fields_tag.join(',');
+    }
+
     return this.request<ListResponse>(`/api/lists/${listId}`, { params });
   }
 
@@ -354,13 +657,82 @@ export class KlaviyoClient {
 
   async getListProfiles(
     listId: string,
-    options: { page_size?: number; page_cursor?: string } = {}
+    options: {
+      email?: string;
+      phone_number?: string;
+      joined_after?: string;
+      joined_before?: string;
+      filter?: string;
+      sort?: string;
+      additional_fields?: string[];
+      fields_profile?: string[];
+      page_size?: number;
+      page_cursor?: string;
+    } = {}
   ): Promise<ProfileListResponse> {
     const params: Record<string, string | number | undefined> = {
       'page[size]': options.page_size,
       'page[cursor]': options.page_cursor,
     };
+
+    // Build filter
+    if (options.filter) {
+      params['filter'] = options.filter;
+    } else {
+      const filters: string[] = [];
+      if (options.email) {
+        filters.push(`equals(email,"${options.email}")`);
+      }
+      if (options.phone_number) {
+        filters.push(`equals(phone_number,"${options.phone_number}")`);
+      }
+      if (options.joined_after) {
+        filters.push(`greater-than(joined_group_at,${options.joined_after})`);
+      }
+      if (options.joined_before) {
+        filters.push(`less-than(joined_group_at,${options.joined_before})`);
+      }
+      if (filters.length > 0) {
+        params['filter'] = filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+      }
+    }
+
+    // Sort
+    if (options.sort) {
+      params['sort'] = options.sort;
+    }
+
+    // Additional fields
+    if (options.additional_fields?.length) {
+      params['additional-fields[profile]'] = options.additional_fields.join(',');
+    }
+
+    // Sparse fieldsets
+    if (options.fields_profile?.length) {
+      params['fields[profile]'] = options.fields_profile.join(',');
+    }
+
     return this.request<ProfileListResponse>(`/api/lists/${listId}/profiles`, { params });
+  }
+
+  async getListTags(listId: string, options: {
+    fields_tag?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_tag?.length) {
+      params['fields[tag]'] = options.fields_tag.join(',');
+    }
+    return this.request<unknown>(`/api/lists/${listId}/tags`, { params });
+  }
+
+  async getListFlowTriggers(listId: string, options: {
+    fields_flow?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_flow?.length) {
+      params['fields[flow]'] = options.fields_flow.join(',');
+    }
+    return this.request<unknown>(`/api/lists/${listId}/flow-triggers`, { params });
   }
 
   async addProfilesToList(listId: string, profileIds: string[]): Promise<void> {

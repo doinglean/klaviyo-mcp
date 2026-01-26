@@ -7,17 +7,42 @@ import {
   createProfileSchema,
   updateProfileSchema,
   subscribeProfilesSchema,
+  unsubscribeProfilesSchema,
   suppressProfilesSchema,
+  unsuppressProfilesSchema,
+  getProfileListsSchema,
+  getProfileSegmentsSchema,
+  upsertProfileSchema,
+  mergeProfilesSchema,
 } from '../utils/validation.js';
+
+// Available sort options for profiles
+const PROFILE_SORT_OPTIONS = [
+  'created', '-created',
+  'email', '-email',
+  'id', '-id',
+  'updated', '-updated',
+  'subscriptions.email.marketing.list_suppressions.timestamp',
+  '-subscriptions.email.marketing.list_suppressions.timestamp',
+  'subscriptions.email.marketing.suppression.timestamp',
+  '-subscriptions.email.marketing.suppression.timestamp',
+];
+
+// Available additional fields for profiles
+const PROFILE_ADDITIONAL_FIELDS = ['subscriptions', 'predictive_analytics'];
+
+// Available include options for profiles
+const PROFILE_INCLUDE_OPTIONS = ['lists', 'push-tokens', 'segments'];
 
 export function getProfileTools(): Tool[] {
   return [
     {
       name: 'klaviyo_profiles_list',
-      description: 'List profiles (contacts) in Klaviyo with optional filtering. Can filter by email, phone number, external ID, and date ranges.',
+      description: 'List profiles (contacts) in Klaviyo with filtering, sorting, and relationship includes. Supports advanced filters on subscription status and predictive analytics.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Simple filters (convenience)
           email: {
             type: 'string',
             description: 'Filter by exact email address',
@@ -29,6 +54,10 @@ export function getProfileTools(): Tool[] {
           external_id: {
             type: 'string',
             description: 'Filter by external ID',
+          },
+          id: {
+            type: 'string',
+            description: 'Filter by Klaviyo profile ID',
           },
           created_after: {
             type: 'string',
@@ -46,6 +75,30 @@ export function getProfileTools(): Tool[] {
             type: 'string',
             description: 'ISO 8601 datetime - return profiles updated before this date',
           },
+          // Advanced filter (raw)
+          filter: {
+            type: 'string',
+            description: 'Raw Klaviyo filter string for advanced filtering (e.g., "equals(subscriptions.email.marketing.suppression.reason,\\"USER_SUPPRESSED\\")")',
+          },
+          // Sort
+          sort: {
+            type: 'string',
+            enum: PROFILE_SORT_OPTIONS,
+            description: 'Sort field. Prefix with - for descending. Options: created, email, id, updated, subscription timestamps',
+          },
+          // Additional fields
+          additional_fields: {
+            type: 'array',
+            items: { type: 'string', enum: PROFILE_ADDITIONAL_FIELDS },
+            description: 'Request additional fields: "subscriptions" (email/SMS consent status) or "predictive_analytics" (CLV, churn probability, etc.)',
+          },
+          // Sparse fieldsets
+          fields_profile: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Limit profile fields returned (sparse fieldsets). Examples: email, first_name, properties, subscriptions.email.marketing',
+          },
+          // Pagination
           page_size: {
             type: 'number',
             description: 'Number of results per page (max 100, default 20)',
@@ -59,13 +112,38 @@ export function getProfileTools(): Tool[] {
     },
     {
       name: 'klaviyo_profiles_get',
-      description: 'Get a specific profile by its Klaviyo ID. Returns full profile details including email, phone, name, and custom properties.',
+      description: 'Get a specific profile by ID with optional relationship includes and additional fields like subscriptions and predictive analytics.',
       inputSchema: {
         type: 'object',
         properties: {
           profile_id: {
             type: 'string',
             description: 'The Klaviyo profile ID (e.g., "01GDDKASAP8TKDDA2GRZDSVP4H")',
+          },
+          additional_fields: {
+            type: 'array',
+            items: { type: 'string', enum: PROFILE_ADDITIONAL_FIELDS },
+            description: 'Request additional fields: "subscriptions" or "predictive_analytics"',
+          },
+          include: {
+            type: 'array',
+            items: { type: 'string', enum: PROFILE_INCLUDE_OPTIONS },
+            description: 'Include related resources: "lists", "segments", "push-tokens"',
+          },
+          fields_profile: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Limit profile fields returned',
+          },
+          fields_list: {
+            type: 'array',
+            items: { type: 'string', enum: ['name', 'created', 'updated', 'opt_in_process'] },
+            description: 'Fields to include for related lists',
+          },
+          fields_segment: {
+            type: 'array',
+            items: { type: 'string', enum: ['name', 'definition', 'created', 'updated', 'is_active', 'is_processing', 'is_starred'] },
+            description: 'Fields to include for related segments',
           },
         },
         required: ['profile_id'],
@@ -125,6 +203,11 @@ export function getProfileTools(): Tool[] {
           properties: {
             type: 'object',
             description: 'Custom properties as key-value pairs',
+          },
+          additional_fields: {
+            type: 'array',
+            items: { type: 'string', enum: PROFILE_ADDITIONAL_FIELDS },
+            description: 'Request additional fields in response',
           },
         },
       },
@@ -188,6 +271,109 @@ export function getProfileTools(): Tool[] {
             type: 'object',
             description: 'Custom properties to set or update',
           },
+          additional_fields: {
+            type: 'array',
+            items: { type: 'string', enum: PROFILE_ADDITIONAL_FIELDS },
+            description: 'Request additional fields in response',
+          },
+        },
+        required: ['profile_id'],
+      },
+    },
+    {
+      name: 'klaviyo_profiles_upsert',
+      description: 'Create or update a profile (upsert). If a profile with the given identifier exists, it will be updated; otherwise, a new profile is created. This is the preferred method for syncing data.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          email: {
+            type: 'string',
+            description: 'Email address (used as identifier)',
+          },
+          phone_number: {
+            type: 'string',
+            description: 'Phone number in E.164 format (used as identifier)',
+          },
+          external_id: {
+            type: 'string',
+            description: 'External ID (used as identifier)',
+          },
+          first_name: { type: 'string' },
+          last_name: { type: 'string' },
+          organization: { type: 'string' },
+          title: { type: 'string' },
+          image: { type: 'string' },
+          location: {
+            type: 'object',
+            properties: {
+              address1: { type: 'string' },
+              address2: { type: 'string' },
+              city: { type: 'string' },
+              country: { type: 'string' },
+              region: { type: 'string' },
+              zip: { type: 'string' },
+              timezone: { type: 'string' },
+            },
+          },
+          properties: {
+            type: 'object',
+            description: 'Custom properties',
+          },
+        },
+      },
+    },
+    {
+      name: 'klaviyo_profiles_merge',
+      description: 'Merge two profiles into one. The source profile will be merged into the destination profile, and the source will be deleted.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          source_profile_id: {
+            type: 'string',
+            description: 'The profile ID to merge FROM (will be deleted)',
+          },
+          destination_profile_id: {
+            type: 'string',
+            description: 'The profile ID to merge INTO (will be kept)',
+          },
+        },
+        required: ['source_profile_id', 'destination_profile_id'],
+      },
+    },
+    {
+      name: 'klaviyo_profiles_get_lists',
+      description: 'Get all lists that a profile is a member of.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          profile_id: {
+            type: 'string',
+            description: 'The Klaviyo profile ID',
+          },
+          fields_list: {
+            type: 'array',
+            items: { type: 'string', enum: ['name', 'created', 'updated', 'opt_in_process'] },
+            description: 'Fields to include for lists',
+          },
+        },
+        required: ['profile_id'],
+      },
+    },
+    {
+      name: 'klaviyo_profiles_get_segments',
+      description: 'Get all segments that a profile is a member of.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          profile_id: {
+            type: 'string',
+            description: 'The Klaviyo profile ID',
+          },
+          fields_segment: {
+            type: 'array',
+            items: { type: 'string', enum: ['name', 'definition', 'created', 'updated', 'is_active', 'is_processing', 'is_starred'] },
+            description: 'Fields to include for segments',
+          },
         },
         required: ['profile_id'],
       },
@@ -226,6 +412,39 @@ export function getProfileTools(): Tool[] {
       },
     },
     {
+      name: 'klaviyo_profiles_unsubscribe',
+      description: 'Unsubscribe one or more profiles from email and/or SMS marketing for a specific list.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          list_id: {
+            type: 'string',
+            description: 'The Klaviyo list ID to unsubscribe profiles from',
+          },
+          profiles: {
+            type: 'array',
+            description: 'Array of profiles to unsubscribe',
+            items: {
+              type: 'object',
+              properties: {
+                email: { type: 'string' },
+                phone_number: { type: 'string' },
+              },
+            },
+          },
+          email_unsubscribe: {
+            type: 'boolean',
+            description: 'Unsubscribe from email marketing (default: true)',
+          },
+          sms_unsubscribe: {
+            type: 'boolean',
+            description: 'Unsubscribe from SMS marketing (default: false)',
+          },
+        },
+        required: ['list_id', 'profiles'],
+      },
+    },
+    {
       name: 'klaviyo_profiles_suppress',
       description: 'Suppress (globally unsubscribe) one or more profiles. Suppressed profiles will not receive any marketing communications.',
       inputSchema: {
@@ -234,6 +453,27 @@ export function getProfileTools(): Tool[] {
           profiles: {
             type: 'array',
             description: 'Array of profiles to suppress (each needs email and/or phone_number)',
+            items: {
+              type: 'object',
+              properties: {
+                email: { type: 'string' },
+                phone_number: { type: 'string' },
+              },
+            },
+          },
+        },
+        required: ['profiles'],
+      },
+    },
+    {
+      name: 'klaviyo_profiles_unsuppress',
+      description: 'Remove suppression from one or more profiles, allowing them to receive marketing communications again.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          profiles: {
+            type: 'array',
+            description: 'Array of profiles to unsuppress',
             items: {
               type: 'object',
               properties: {
@@ -262,18 +502,45 @@ export async function handleProfileTool(
 
     case 'klaviyo_profiles_get': {
       const input = getProfileSchema.parse(args);
-      return client.getProfile(input.profile_id);
+      return client.getProfile(input.profile_id, {
+        additional_fields: input.additional_fields,
+        include: input.include,
+        fields_profile: input.fields_profile,
+        fields_list: input.fields_list,
+        fields_segment: input.fields_segment,
+      });
     }
 
     case 'klaviyo_profiles_create': {
       const input = createProfileSchema.parse(args);
-      return client.createProfile(input);
+      const { additional_fields, ...profileData } = input;
+      return client.createProfile(profileData, { additional_fields });
     }
 
     case 'klaviyo_profiles_update': {
       const input = updateProfileSchema.parse(args);
-      const { profile_id, ...updateData } = input;
-      return client.updateProfile(profile_id, updateData);
+      const { profile_id, additional_fields, ...updateData } = input;
+      return client.updateProfile(profile_id, updateData, { additional_fields });
+    }
+
+    case 'klaviyo_profiles_upsert': {
+      const input = upsertProfileSchema.parse(args);
+      return client.upsertProfile(input);
+    }
+
+    case 'klaviyo_profiles_merge': {
+      const input = mergeProfilesSchema.parse(args);
+      return client.mergeProfiles(input.source_profile_id, input.destination_profile_id);
+    }
+
+    case 'klaviyo_profiles_get_lists': {
+      const input = getProfileListsSchema.parse(args);
+      return client.getProfileLists(input.profile_id, { fields_list: input.fields_list });
+    }
+
+    case 'klaviyo_profiles_get_segments': {
+      const input = getProfileSegmentsSchema.parse(args);
+      return client.getProfileSegments(input.profile_id, { fields_segment: input.fields_segment });
     }
 
     case 'klaviyo_profiles_subscribe': {
@@ -286,9 +553,24 @@ export async function handleProfileTool(
       });
     }
 
+    case 'klaviyo_profiles_unsubscribe': {
+      const input = unsubscribeProfilesSchema.parse(args);
+      return client.unsubscribeProfiles({
+        listId: input.list_id,
+        profiles: input.profiles,
+        emailUnsubscribe: input.email_unsubscribe,
+        smsUnsubscribe: input.sms_unsubscribe,
+      });
+    }
+
     case 'klaviyo_profiles_suppress': {
       const input = suppressProfilesSchema.parse(args);
       return client.suppressProfiles(input.profiles);
+    }
+
+    case 'klaviyo_profiles_unsuppress': {
+      const input = unsuppressProfilesSchema.parse(args);
+      return client.unsuppressProfiles(input.profiles);
     }
 
     default:
