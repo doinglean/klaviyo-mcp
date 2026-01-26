@@ -1602,4 +1602,334 @@ export class KlaviyoClient {
     }
     return this.request<unknown>(`/api/metric-properties/${propertyId}`, { params });
   }
+
+  // ============================================================
+  // SEGMENT METHODS
+  // ============================================================
+
+  private buildSegmentFilter(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    is_active?: boolean;
+    is_starred?: boolean;
+    created_after?: string;
+    created_before?: string;
+    updated_after?: string;
+    filter?: string;
+  }): string | undefined {
+    if (options.filter) return options.filter;
+
+    const filters: string[] = [];
+    if (options.name) filters.push(`equals(name,"${options.name}")`);
+    if (options.name_contains) filters.push(`contains(name,"${options.name_contains}")`);
+    if (options.id) filters.push(`equals(id,"${options.id}")`);
+    if (options.is_active !== undefined) filters.push(`equals(is_active,${options.is_active})`);
+    if (options.is_starred !== undefined) filters.push(`equals(is_starred,${options.is_starred})`);
+    if (options.created_after) filters.push(`greater-than(created,${options.created_after})`);
+    if (options.created_before) filters.push(`less-than(created,${options.created_before})`);
+    if (options.updated_after) filters.push(`greater-than(updated,${options.updated_after})`);
+
+    if (filters.length === 0) return undefined;
+    return filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+  }
+
+  async listSegments(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    is_active?: boolean;
+    is_starred?: boolean;
+    created_after?: string;
+    created_before?: string;
+    updated_after?: string;
+    filter?: string;
+    sort?: string;
+    include?: string[];
+    fields_segment?: string[];
+    fields_tag?: string[];
+    fields_flow?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+
+    const filter = this.buildSegmentFilter(options);
+    if (filter) params['filter'] = filter;
+    if (options.sort) params['sort'] = options.sort;
+    if (options.include?.length) params['include'] = options.include.join(',');
+    if (options.fields_segment?.length) params['fields[segment]'] = options.fields_segment.join(',');
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+    if (options.fields_flow?.length) params['fields[flow]'] = options.fields_flow.join(',');
+
+    return this.request<unknown>('/api/segments', { params });
+  }
+
+  async getSegment(segmentId: string, options: {
+    include_profile_count?: boolean;
+    include?: string[];
+    fields_segment?: string[];
+    fields_tag?: string[];
+    fields_flow?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+
+    if (options.include_profile_count !== false) {
+      params['additional-fields[segment]'] = 'profile_count';
+    }
+    if (options.include?.length) params['include'] = options.include.join(',');
+    if (options.fields_segment?.length) params['fields[segment]'] = options.fields_segment.join(',');
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+    if (options.fields_flow?.length) params['fields[flow]'] = options.fields_flow.join(',');
+
+    return this.request<unknown>(`/api/segments/${segmentId}`, { params });
+  }
+
+  async getSegmentProfiles(
+    segmentId: string,
+    options: {
+      email?: string;
+      phone_number?: string;
+      filter?: string;
+      sort?: string;
+      additional_fields?: string[];
+      fields_profile?: string[];
+      page_size?: number;
+      page_cursor?: string;
+    } = {}
+  ): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[size]': options.page_size,
+      'page[cursor]': options.page_cursor,
+    };
+
+    // Build filter
+    if (options.filter) {
+      params['filter'] = options.filter;
+    } else {
+      const filters: string[] = [];
+      if (options.email) filters.push(`equals(email,"${options.email}")`);
+      if (options.phone_number) filters.push(`equals(phone_number,"${options.phone_number}")`);
+      if (filters.length > 0) {
+        params['filter'] = filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+      }
+    }
+
+    if (options.sort) params['sort'] = options.sort;
+    if (options.additional_fields?.length) {
+      params['additional-fields[profile]'] = options.additional_fields.join(',');
+    }
+    if (options.fields_profile?.length) {
+      params['fields[profile]'] = options.fields_profile.join(',');
+    }
+
+    return this.request<unknown>(`/api/segments/${segmentId}/profiles`, { params });
+  }
+
+  async createSegment(name: string, definition: Record<string, unknown>): Promise<unknown> {
+    const body = {
+      data: {
+        type: 'segment',
+        attributes: {
+          name,
+          definition,
+        },
+      },
+    };
+    return this.request<unknown>('/api/segments', { method: 'POST', body });
+  }
+
+  async updateSegment(segmentId: string, options: {
+    name?: string;
+    definition?: Record<string, unknown>;
+    is_starred?: boolean;
+  }): Promise<unknown> {
+    const attributes: Record<string, unknown> = {};
+    if (options.name) attributes.name = options.name;
+    if (options.definition) attributes.definition = options.definition;
+    if (options.is_starred !== undefined) attributes.is_starred = options.is_starred;
+
+    const body = {
+      data: {
+        type: 'segment',
+        id: segmentId,
+        attributes,
+      },
+    };
+    return this.request<unknown>(`/api/segments/${segmentId}`, { method: 'PATCH', body });
+  }
+
+  async deleteSegment(segmentId: string): Promise<void> {
+    await this.request<void>(`/api/segments/${segmentId}`, { method: 'DELETE' });
+  }
+
+  async getSegmentTags(segmentId: string, options: {
+    fields_tag?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+    return this.request<unknown>(`/api/segments/${segmentId}/tags`, { params });
+  }
+
+  async getSegmentFlowTriggers(segmentId: string, options: {
+    fields_flow?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_flow?.length) params['fields[flow]'] = options.fields_flow.join(',');
+    return this.request<unknown>(`/api/segments/${segmentId}/flow-triggers`, { params });
+  }
+
+  // ============================================================
+  // TEMPLATE METHODS
+  // ============================================================
+
+  private buildTemplateFilter(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    editor_type?: string;
+    created_after?: string;
+    created_before?: string;
+    updated_after?: string;
+    filter?: string;
+  }): string | undefined {
+    if (options.filter) return options.filter;
+
+    const filters: string[] = [];
+    if (options.name) filters.push(`equals(name,"${options.name}")`);
+    if (options.name_contains) filters.push(`contains(name,"${options.name_contains}")`);
+    if (options.id) filters.push(`equals(id,"${options.id}")`);
+    if (options.editor_type) filters.push(`equals(editor_type,"${options.editor_type}")`);
+    if (options.created_after) filters.push(`greater-than(created,${options.created_after})`);
+    if (options.created_before) filters.push(`less-than(created,${options.created_before})`);
+    if (options.updated_after) filters.push(`greater-than(updated,${options.updated_after})`);
+
+    if (filters.length === 0) return undefined;
+    return filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+  }
+
+  async listTemplates(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    editor_type?: string;
+    created_after?: string;
+    created_before?: string;
+    updated_after?: string;
+    filter?: string;
+    sort?: string;
+    fields_template?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+
+    const filter = this.buildTemplateFilter(options);
+    if (filter) params['filter'] = filter;
+    if (options.sort) params['sort'] = options.sort;
+    if (options.fields_template?.length) params['fields[template]'] = options.fields_template.join(',');
+
+    return this.request<unknown>('/api/templates', { params });
+  }
+
+  async getTemplate(templateId: string, options: {
+    fields_template?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_template?.length) params['fields[template]'] = options.fields_template.join(',');
+    return this.request<unknown>(`/api/templates/${templateId}`, { params });
+  }
+
+  async createTemplate(options: {
+    name: string;
+    html?: string;
+    text?: string;
+    editor_type?: string;
+  }): Promise<unknown> {
+    const attributes: Record<string, unknown> = {
+      name: options.name,
+    };
+    if (options.html) attributes.html = options.html;
+    if (options.text) attributes.text = options.text;
+    if (options.editor_type) attributes.editor_type = options.editor_type;
+
+    const body = {
+      data: {
+        type: 'template',
+        attributes,
+      },
+    };
+    return this.request<unknown>('/api/templates', { method: 'POST', body });
+  }
+
+  async updateTemplate(templateId: string, options: {
+    name?: string;
+    html?: string;
+    text?: string;
+  }): Promise<unknown> {
+    const attributes: Record<string, unknown> = {};
+    if (options.name) attributes.name = options.name;
+    if (options.html) attributes.html = options.html;
+    if (options.text) attributes.text = options.text;
+
+    const body = {
+      data: {
+        type: 'template',
+        id: templateId,
+        attributes,
+      },
+    };
+    return this.request<unknown>(`/api/templates/${templateId}`, { method: 'PATCH', body });
+  }
+
+  async deleteTemplate(templateId: string): Promise<void> {
+    await this.request<void>(`/api/templates/${templateId}`, { method: 'DELETE' });
+  }
+
+  async cloneTemplate(templateId: string, newName?: string): Promise<unknown> {
+    const attributes: Record<string, unknown> = {};
+    if (newName) attributes.name = newName;
+
+    const body = {
+      data: {
+        type: 'template',
+        id: templateId,
+        attributes,
+      },
+    };
+    return this.request<unknown>('/api/template-clone', { method: 'POST', body });
+  }
+
+  async renderTemplate(templateId: string, context?: Record<string, unknown>): Promise<unknown> {
+    const body = {
+      data: {
+        type: 'template',
+        id: templateId,
+        attributes: {
+          context: context || {},
+        },
+      },
+    };
+    return this.request<unknown>('/api/template-render', { method: 'POST', body });
+  }
+
+  async getTemplateTags(templateId: string, options: {
+    fields_tag?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+    return this.request<unknown>(`/api/templates/${templateId}/tags`, { params });
+  }
+
+  async getTemplateUniversalContent(templateId: string, options: {
+    fields_universal_content?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_universal_content?.length) {
+      params['fields[template-universal-content]'] = options.fields_universal_content.join(',');
+    }
+    return this.request<unknown>(`/api/templates/${templateId}/template-universal-content`, { params });
+  }
 }

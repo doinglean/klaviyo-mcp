@@ -5,6 +5,8 @@ import { getListTools, handleListTool } from './lists.js';
 import { getCampaignTools, handleCampaignTool } from './campaigns.js';
 import { getEventTools, handleEventTool } from './events.js';
 import { getMetricTools, handleMetricTool } from './metrics.js';
+import { getSegmentTools, handleSegmentTool } from './segments.js';
+import { getTemplateTools, handleTemplateTool } from './templates.js';
 
 export function getAllTools(): Tool[] {
   return [
@@ -13,6 +15,8 @@ export function getAllTools(): Tool[] {
     ...getCampaignTools(),
     ...getEventTools(),
     ...getMetricTools(),
+    ...getSegmentTools(),
+    ...getTemplateTools(),
   ];
 }
 
@@ -44,6 +48,16 @@ export async function handleToolCall(
   // Metric tools
   if (toolName.startsWith('klaviyo_metrics_')) {
     return handleMetricTool(client, toolName, args);
+  }
+
+  // Segment tools
+  if (toolName.startsWith('klaviyo_segments_')) {
+    return handleSegmentTool(client, toolName, args);
+  }
+
+  // Template tools
+  if (toolName.startsWith('klaviyo_templates_')) {
+    return handleTemplateTool(client, toolName, args);
   }
 
   throw new Error(`Unknown tool: ${toolName}`);
