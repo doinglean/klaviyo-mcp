@@ -1,0 +1,52 @@
+{
+  "name": "klaviyo-mcp",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server for Klaviyo email marketing API",
+  "type": "module",
+  "main": "dist/index.mjs",
+  "types": "dist/index.d.mts",
+  "bin": {
+    "klaviyo-mcp": "dist/index.mjs"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "start": "node dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src/",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "klaviyo",
+    "mcp",
+    "model-context-protocol",
+    "email-marketing",
+    "claude",
+    "ai"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/doinglean/klaviyo-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/doinglean/klaviyo-mcp/issues"
+  },
+  "homepage": "https://github.com/doinglean/klaviyo-mcp#readme",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.22.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.3.0",
+    "vitest": "^1.0.0"
+  }
+}
