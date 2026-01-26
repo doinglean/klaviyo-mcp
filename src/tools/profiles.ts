@@ -486,6 +486,93 @@ export function getProfileTools(): Tool[] {
         required: ['profiles'],
       },
     },
+    // Bulk Import Jobs
+    {
+      name: 'klaviyo_profiles_bulk_import',
+      description: 'Create a bulk profile import job. Import multiple profiles at once, optionally adding them to lists.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          profiles: {
+            type: 'array',
+            description: 'Array of profile data to import',
+            items: {
+              type: 'object',
+              properties: {
+                email: { type: 'string' },
+                phone_number: { type: 'string' },
+                external_id: { type: 'string' },
+                first_name: { type: 'string' },
+                last_name: { type: 'string' },
+                properties: { type: 'object' },
+              },
+            },
+          },
+          list_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional list IDs to add imported profiles to',
+          },
+        },
+        required: ['profiles'],
+      },
+    },
+    {
+      name: 'klaviyo_profiles_bulk_import_jobs_list',
+      description: 'List all bulk profile import jobs. Check status of import operations.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          page_cursor: { type: 'string', description: 'Cursor for pagination' },
+          filter: { type: 'string', description: 'Filter expression' },
+        },
+      },
+    },
+    {
+      name: 'klaviyo_profiles_bulk_import_job_get',
+      description: 'Get details of a specific bulk import job by ID.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          job_id: { type: 'string', description: 'The bulk import job ID' },
+        },
+        required: ['job_id'],
+      },
+    },
+    // Suppression Job Status
+    {
+      name: 'klaviyo_profiles_suppression_jobs_list',
+      description: 'List all profile suppression jobs (both create and delete). Monitor bulk suppression operations.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          job_type: {
+            type: 'string',
+            enum: ['create', 'delete'],
+            description: 'Type of suppression job: "create" (suppress profiles) or "delete" (unsuppress profiles)',
+          },
+          page_cursor: { type: 'string', description: 'Cursor for pagination' },
+          filter: { type: 'string', description: 'Filter expression' },
+        },
+        required: ['job_type'],
+      },
+    },
+    {
+      name: 'klaviyo_profiles_suppression_job_get',
+      description: 'Get details of a specific suppression job by ID.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          job_type: {
+            type: 'string',
+            enum: ['create', 'delete'],
+            description: 'Type of suppression job: "create" or "delete"',
+          },
+          job_id: { type: 'string', description: 'The suppression job ID' },
+        },
+        required: ['job_type', 'job_id'],
+      },
+    },
   ];
 }
 
@@ -571,6 +658,63 @@ export async function handleProfileTool(
     case 'klaviyo_profiles_unsuppress': {
       const input = unsuppressProfilesSchema.parse(args);
       return client.unsuppressProfiles(input.profiles);
+    }
+
+    // Bulk Import Jobs
+    case 'klaviyo_profiles_bulk_import': {
+      const input = z.object({
+        profiles: z.array(z.object({
+          email: z.string().optional(),
+          phone_number: z.string().optional(),
+          external_id: z.string().optional(),
+          first_name: z.string().optional(),
+          last_name: z.string().optional(),
+          properties: z.record(z.unknown()).optional(),
+        })),
+        list_ids: z.array(z.string()).optional(),
+      }).parse(args);
+      return client.createBulkImportJob(input);
+    }
+
+    case 'klaviyo_profiles_bulk_import_jobs_list': {
+      const input = z.object({
+        page_cursor: z.string().optional(),
+        filter: z.string().optional(),
+      }).parse(args);
+      return client.getBulkImportJobs(input);
+    }
+
+    case 'klaviyo_profiles_bulk_import_job_get': {
+      const input = z.object({
+        job_id: z.string(),
+      }).parse(args);
+      return client.getBulkImportJob(input.job_id);
+    }
+
+    // Suppression Job Status
+    case 'klaviyo_profiles_suppression_jobs_list': {
+      const input = z.object({
+        job_type: z.enum(['create', 'delete']),
+        page_cursor: z.string().optional(),
+        filter: z.string().optional(),
+      }).parse(args);
+      if (input.job_type === 'create') {
+        return client.getSuppressionCreateJobs({ page_cursor: input.page_cursor, filter: input.filter });
+      } else {
+        return client.getSuppressionDeleteJobs({ page_cursor: input.page_cursor, filter: input.filter });
+      }
+    }
+
+    case 'klaviyo_profiles_suppression_job_get': {
+      const input = z.object({
+        job_type: z.enum(['create', 'delete']),
+        job_id: z.string(),
+      }).parse(args);
+      if (input.job_type === 'create') {
+        return client.getSuppressionCreateJob(input.job_id);
+      } else {
+        return client.getSuppressionDeleteJob(input.job_id);
+      }
     }
 
     default:

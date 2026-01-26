@@ -754,4 +754,90 @@ export class KlaviyoClient {
       body,
     });
   }
+
+  // Bulk Import Jobs
+  async createBulkImportJob(options: {
+    profiles: Array<{
+      email?: string;
+      phone_number?: string;
+      external_id?: string;
+      first_name?: string;
+      last_name?: string;
+      properties?: Record<string, unknown>;
+    }>;
+    list_ids?: string[];
+  }): Promise<BulkJobResponse> {
+    const body: Record<string, unknown> = {
+      data: {
+        type: 'profile-bulk-import-job',
+        attributes: {
+          profiles: {
+            data: options.profiles.map(p => ({
+              type: 'profile',
+              attributes: p,
+            })),
+          },
+        },
+      },
+    };
+    
+    if (options.list_ids?.length) {
+      (body.data as Record<string, unknown>).relationships = {
+        lists: {
+          data: options.list_ids.map(id => ({ type: 'list', id })),
+        },
+      };
+    }
+
+    return this.request<BulkJobResponse>('/api/profile-bulk-import-jobs', {
+      method: 'POST',
+      body,
+    });
+  }
+
+  async getBulkImportJobs(options: {
+    page_cursor?: string;
+    filter?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+      filter: options.filter,
+    };
+    return this.request<unknown>('/api/profile-bulk-import-jobs', { params });
+  }
+
+  async getBulkImportJob(jobId: string): Promise<BulkJobResponse> {
+    return this.request<BulkJobResponse>(`/api/profile-bulk-import-jobs/${jobId}`);
+  }
+
+  // Suppression Job Status
+  async getSuppressionCreateJobs(options: {
+    page_cursor?: string;
+    filter?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+      filter: options.filter,
+    };
+    return this.request<unknown>('/api/profile-suppression-bulk-create-jobs', { params });
+  }
+
+  async getSuppressionCreateJob(jobId: string): Promise<BulkJobResponse> {
+    return this.request<BulkJobResponse>(`/api/profile-suppression-bulk-create-jobs/${jobId}`);
+  }
+
+  async getSuppressionDeleteJobs(options: {
+    page_cursor?: string;
+    filter?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+      filter: options.filter,
+    };
+    return this.request<unknown>('/api/profile-suppression-bulk-delete-jobs', { params });
+  }
+
+  async getSuppressionDeleteJob(jobId: string): Promise<BulkJobResponse> {
+    return this.request<BulkJobResponse>(`/api/profile-suppression-bulk-delete-jobs/${jobId}`);
+  }
 }
