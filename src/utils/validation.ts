@@ -90,8 +90,8 @@ export const suppressProfilesSchema = z.object({
 });
 
 // List schemas
+// Note: Klaviyo's /lists endpoint does NOT support page[size], only page[cursor]
 export const listListsSchema = z.object({
-  page_size: z.number().min(1).max(100).optional().default(20),
   page_cursor: z.string().optional(),
 });
 

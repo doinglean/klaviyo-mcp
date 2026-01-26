@@ -20,10 +20,6 @@ export function getListTools(): Tool[] {
       inputSchema: {
         type: 'object',
         properties: {
-          page_size: {
-            type: 'number',
-            description: 'Number of results per page (max 100, default 20)',
-          },
           page_cursor: {
             type: 'string',
             description: 'Cursor for pagination (from previous response)',
@@ -162,7 +158,7 @@ export async function handleListTool(
   switch (toolName) {
     case 'klaviyo_lists_list': {
       const input = listListsSchema.parse(args);
-      return client.listLists(input);
+      return client.listLists({ page_cursor: input.page_cursor });
     }
 
     case 'klaviyo_lists_get': {

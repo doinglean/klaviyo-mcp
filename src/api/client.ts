@@ -310,9 +310,9 @@ export class KlaviyoClient {
   }
 
   // List methods
-  async listLists(options: { page_size?: number; page_cursor?: string } = {}): Promise<ListListResponse> {
+  // Note: Klaviyo's /lists endpoint does NOT support page[size], only page[cursor]
+  async listLists(options: { page_cursor?: string } = {}): Promise<ListListResponse> {
     const params: Record<string, string | number | undefined> = {
-      'page[size]': options.page_size,
       'page[cursor]': options.page_cursor,
     };
     return this.request<ListListResponse>('/api/lists', { params });
