@@ -85,7 +85,8 @@ export class KlaviyoClient {
     const url = new URL(`${this.baseUrl}${path}`);
     if (params) {
       for (const [key, value] of Object.entries(params)) {
-        if (value !== undefined) {
+        // Skip undefined, null, and empty strings
+        if (value !== undefined && value !== null && value !== '') {
           url.searchParams.set(key, String(value));
         }
       }
