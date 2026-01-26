@@ -81,6 +81,7 @@ export interface ListAttributes {
   created?: string;
   updated?: string;
   opt_in_process?: string;
+  profile_count?: number;  // Available via additional-fields[list]=profile_count
 }
 
 export type List = JsonApiResource<'list', ListAttributes>;

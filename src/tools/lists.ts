@@ -29,7 +29,7 @@ export function getListTools(): Tool[] {
     },
     {
       name: 'klaviyo_lists_get',
-      description: 'Get details of a specific list by its ID.',
+      description: 'Get details of a specific list by its ID. Includes profile_count (number of members in the list).',
       inputSchema: {
         type: 'object',
         properties: {

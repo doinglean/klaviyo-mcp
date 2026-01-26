@@ -310,7 +310,8 @@ export class KlaviyoClient {
   }
 
   // List methods
-  // Note: Klaviyo's /lists endpoint does NOT support page[size], only page[cursor]
+  // Note: Klaviyo's /lists endpoint does NOT support page[size] or additional-fields, only page[cursor]
+  // To get profile_count, use getList() for individual lists
   async listLists(options: { page_cursor?: string } = {}): Promise<ListListResponse> {
     const params: Record<string, string | number | undefined> = {
       'page[cursor]': options.page_cursor,
@@ -318,8 +319,12 @@ export class KlaviyoClient {
     return this.request<ListListResponse>('/api/lists', { params });
   }
 
-  async getList(listId: string): Promise<ListResponse> {
-    return this.request<ListResponse>(`/api/lists/${listId}`);
+  async getList(listId: string, includeProfileCount: boolean = true): Promise<ListResponse> {
+    const params: Record<string, string | number | undefined> = {};
+    if (includeProfileCount) {
+      params['additional-fields[list]'] = 'profile_count';
+    }
+    return this.request<ListResponse>(`/api/lists/${listId}`, { params });
   }
 
   async createList(name: string): Promise<ListResponse> {
