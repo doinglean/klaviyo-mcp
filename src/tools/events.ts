@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KlaviyoClient } from '../api/client.js';
+import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
 
 // Sort options for events
 const EVENT_SORT_OPTIONS = [
@@ -21,10 +22,19 @@ export function getEventTools(): Tool[] {
     // === EVENTS CRUD ===
     {
       name: 'klaviyo_events_list',
-      description: 'List events with filtering by profile, metric, datetime, and more. Events track customer actions like purchases, page views, etc.',
+      description: 'List events. By default fetches ALL events automatically (no manual pagination needed). WARNING: Large accounts may have millions of events - use filters (profile_id, metric_id, datetime range) or set max_results. Events track customer actions like purchases, page views, etc.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Auto-pagination
+          fetch_all: {
+            type: 'boolean',
+            description: 'Automatically fetch all pages (default: true). Set to false for single page only.',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum results to return when fetch_all is true (default: 500). Use lower values for large datasets!',
+          },
           // Filters
           profile_id: {
             type: 'string',
@@ -252,6 +262,8 @@ export function getEventTools(): Tool[] {
 
 // Validation schemas
 const listEventsSchema = z.object({
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().optional(),
   profile_id: z.string().optional(),
   metric_id: z.string().optional(),
   datetime_after: z.string().optional(),
@@ -314,7 +326,13 @@ export async function handleEventTool(
   switch (toolName) {
     case 'klaviyo_events_list': {
       const input = listEventsSchema.parse(args);
-      return client.listEvents(input);
+      const { fetch_all, max_results, ...listOptions } = input;
+      
+      // Use auto-pagination by default
+      return fetchAllPages(
+        (cursor) => client.listEvents({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
+        { fetch_all, max_results }
+      );
     }
 
     case 'klaviyo_events_get': {

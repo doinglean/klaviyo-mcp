@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KlaviyoClient } from '../api/client.js';
+import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
 
 // Sort options for campaigns
 const CAMPAIGN_SORT_OPTIONS = [
@@ -32,10 +33,19 @@ export function getCampaignTools(): Tool[] {
     // === CAMPAIGNS CRUD ===
     {
       name: 'klaviyo_campaigns_list',
-      description: 'List all campaigns with filtering, sorting, and pagination. Filter by name, status, channel, and more.',
+      description: 'List all campaigns. By default fetches ALL campaigns automatically (no manual pagination needed). Filter by name, status, channel, and more.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Auto-pagination
+          fetch_all: {
+            type: 'boolean',
+            description: 'Automatically fetch all pages (default: true). Set to false for single page only.',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum results to return when fetch_all is true (default: 500)',
+          },
           // Filters
           name: {
             type: 'string',
@@ -621,6 +631,8 @@ export function getCampaignTools(): Tool[] {
 
 // Validation schemas
 const listCampaignsSchema = z.object({
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().optional(),
   name: z.string().optional(),
   name_contains: z.string().optional(),
   status: z.enum(['draft', 'scheduled', 'sent', 'cancelled']).optional(),
@@ -709,7 +721,13 @@ export async function handleCampaignTool(
   switch (toolName) {
     case 'klaviyo_campaigns_list': {
       const input = listCampaignsSchema.parse(args);
-      return client.listCampaigns(input);
+      const { fetch_all, max_results, ...listOptions } = input;
+      
+      // Use auto-pagination by default
+      return fetchAllPages(
+        (cursor) => client.listCampaigns({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
+        { fetch_all, max_results }
+      );
     }
 
     case 'klaviyo_campaigns_get': {

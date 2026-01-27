@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KlaviyoClient } from '../api/client.js';
+import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
 
 // Sort options for templates
 const TEMPLATE_SORT_OPTIONS = [
@@ -20,10 +21,19 @@ export function getTemplateTools(): Tool[] {
   return [
     {
       name: 'klaviyo_templates_list',
-      description: 'List all email templates with filtering, sorting, and pagination. Filter by name, editor type, and creation date.',
+      description: 'List all email templates. By default fetches ALL templates automatically (no manual pagination needed). Filter by name, editor type, and creation date.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Auto-pagination
+          fetch_all: {
+            type: 'boolean',
+            description: 'Automatically fetch all pages (default: true). Set to false for single page only.',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum results to return when fetch_all is true (default: 500)',
+          },
           // Filters
           name: {
             type: 'string',
@@ -224,6 +234,8 @@ export function getTemplateTools(): Tool[] {
 
 // Validation schemas
 const listTemplatesSchema = z.object({
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().optional(),
   name: z.string().optional(),
   name_contains: z.string().optional(),
   id: z.string().optional(),
@@ -283,7 +295,13 @@ export async function handleTemplateTool(
   switch (toolName) {
     case 'klaviyo_templates_list': {
       const input = listTemplatesSchema.parse(args);
-      return client.listTemplates(input);
+      const { fetch_all, max_results, ...listOptions } = input;
+      
+      // Use auto-pagination by default
+      return fetchAllPages(
+        (cursor) => client.listTemplates({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
+        { fetch_all, max_results }
+      );
     }
 
     case 'klaviyo_templates_get': {

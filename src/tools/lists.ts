@@ -13,6 +13,7 @@ import {
   getListTagsSchema,
   getListFlowTriggersSchema,
 } from '../utils/validation.js';
+import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
 
 // Available sort options for lists
 const LIST_SORT_OPTIONS = [
@@ -37,10 +38,19 @@ export function getListTools(): Tool[] {
   return [
     {
       name: 'klaviyo_lists_list',
-      description: 'Get all lists in your Klaviyo account with optional filtering, sorting, and relationship includes.',
+      description: 'Get all lists in your Klaviyo account. By default fetches ALL lists automatically (no manual pagination needed). Supports filtering, sorting, and relationship includes.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Auto-pagination
+          fetch_all: {
+            type: 'boolean',
+            description: 'Automatically fetch all pages (default: true). Set to false for single page only.',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum results to return when fetch_all is true (default: 500)',
+          },
           // Filters
           name: {
             type: 'string',
@@ -95,10 +105,10 @@ export function getListTools(): Tool[] {
             items: { type: 'string', enum: ['name'] },
             description: 'Fields to include for related tags (when include contains tags)',
           },
-          // Pagination
+          // Pagination (only needed if fetch_all is false)
           page_cursor: {
             type: 'string',
-            description: 'Cursor for pagination (from previous response)',
+            description: 'Cursor for pagination (only used when fetch_all is false)',
           },
         },
       },
@@ -336,7 +346,13 @@ export async function handleListTool(
   switch (toolName) {
     case 'klaviyo_lists_list': {
       const input = listListsSchema.parse(args);
-      return client.listLists(input);
+      const { fetch_all, max_results, ...listOptions } = input;
+      
+      // Use auto-pagination by default
+      return fetchAllPages(
+        (cursor) => client.listLists({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
+        { fetch_all, max_results }
+      );
     }
 
     case 'klaviyo_lists_get': {

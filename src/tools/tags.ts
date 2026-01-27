@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KlaviyoClient } from '../api/client.js';
+import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
 
 // Sort options for tags
 const TAG_SORT_OPTIONS = [
@@ -18,10 +19,19 @@ export function getTagTools(): Tool[] {
   return [
     {
       name: 'klaviyo_tags_list',
-      description: 'List all tags with filtering, sorting, and pagination. Tags are used to organize and categorize resources.',
+      description: 'List all tags. By default fetches ALL tags automatically (no manual pagination needed). Tags are used to organize and categorize resources.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Auto-pagination
+          fetch_all: {
+            type: 'boolean',
+            description: 'Automatically fetch all pages (default: true). Set to false for single page only.',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum results to return when fetch_all is true (default: 500)',
+          },
           // Filters
           name: {
             type: 'string',
@@ -381,6 +391,8 @@ export function getTagTools(): Tool[] {
 
 // Validation schemas
 const listTagsSchema = z.object({
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().optional(),
   name: z.string().optional(),
   name_contains: z.string().optional(),
   id: z.string().optional(),
@@ -475,7 +487,13 @@ export async function handleTagTool(
   switch (toolName) {
     case 'klaviyo_tags_list': {
       const input = listTagsSchema.parse(args);
-      return client.listTags(input);
+      const { fetch_all, max_results, ...listOptions } = input;
+      
+      // Use auto-pagination by default
+      return fetchAllPages(
+        (cursor) => client.listTags({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
+        { fetch_all, max_results }
+      );
     }
 
     case 'klaviyo_tags_get': {

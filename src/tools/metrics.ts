@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KlaviyoClient } from '../api/client.js';
+import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
 
 // Available measurements for metric aggregates
 const METRIC_MEASUREMENTS = ['count', 'sum_value', 'unique'];
@@ -27,10 +28,19 @@ export function getMetricTools(): Tool[] {
     // === METRICS LIST & GET ===
     {
       name: 'klaviyo_metrics_list',
-      description: 'List all metrics (event types) in your Klaviyo account. Metrics represent different types of events like "Placed Order", "Opened Email", etc.',
+      description: 'List all metrics (event types) in your Klaviyo account. By default fetches ALL metrics automatically (no manual pagination needed). Metrics represent different types of events like "Placed Order", "Opened Email", etc.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Auto-pagination
+          fetch_all: {
+            type: 'boolean',
+            description: 'Automatically fetch all pages (default: true). Set to false for single page only.',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum results to return when fetch_all is true (default: 500)',
+          },
           // Filters
           name: {
             type: 'string',
@@ -296,6 +306,8 @@ export function getMetricTools(): Tool[] {
 
 // Validation schemas
 const listMetricsSchema = z.object({
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().optional(),
   name: z.string().optional(),
   name_contains: z.string().optional(),
   integration_name: z.string().optional(),
@@ -354,7 +366,13 @@ export async function handleMetricTool(
   switch (toolName) {
     case 'klaviyo_metrics_list': {
       const input = listMetricsSchema.parse(args);
-      return client.listMetrics(input);
+      const { fetch_all, max_results, ...listOptions } = input;
+      
+      // Use auto-pagination by default
+      return fetchAllPages(
+        (cursor) => client.listMetrics({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
+        { fetch_all, max_results }
+      );
     }
 
     case 'klaviyo_metrics_get': {

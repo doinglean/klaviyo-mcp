@@ -15,6 +15,7 @@ import {
   upsertProfileSchema,
   mergeProfilesSchema,
 } from '../utils/validation.js';
+import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
 
 // Available sort options for profiles
 const PROFILE_SORT_OPTIONS = [
@@ -38,10 +39,19 @@ export function getProfileTools(): Tool[] {
   return [
     {
       name: 'klaviyo_profiles_list',
-      description: 'List profiles (contacts) in Klaviyo with filtering, sorting, and relationship includes. Supports advanced filters on subscription status and predictive analytics.',
+      description: 'List profiles (contacts) in Klaviyo. By default fetches ALL profiles automatically (no manual pagination needed). WARNING: Large accounts may have millions of profiles - use filters or set max_results. Supports filtering on subscription status and predictive analytics.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Auto-pagination
+          fetch_all: {
+            type: 'boolean',
+            description: 'Automatically fetch all pages (default: true). Set to false for single page only.',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum results to return when fetch_all is true (default: 500). Use lower values for large accounts!',
+          },
           // Simple filters (convenience)
           email: {
             type: 'string',
@@ -584,7 +594,13 @@ export async function handleProfileTool(
   switch (toolName) {
     case 'klaviyo_profiles_list': {
       const input = listProfilesSchema.parse(args);
-      return client.listProfiles(input);
+      const { fetch_all, max_results, ...listOptions } = input;
+      
+      // Use auto-pagination by default
+      return fetchAllPages(
+        (cursor) => client.listProfiles({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
+        { fetch_all, max_results }
+      );
     }
 
     case 'klaviyo_profiles_get': {

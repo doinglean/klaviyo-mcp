@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KlaviyoClient } from '../api/client.js';
+import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
 
 // Sort options for flows
 const FLOW_SORT_OPTIONS = [
@@ -41,10 +42,19 @@ export function getFlowTools(): Tool[] {
   return [
     {
       name: 'klaviyo_flows_list',
-      description: 'List all automation flows with filtering, sorting, and pagination. Filter by name, status, trigger type, and more.',
+      description: 'List all automation flows with filtering and sorting. By default fetches ALL flows automatically (no manual pagination needed). Filter by name, status, trigger type, and more.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Auto-pagination
+          fetch_all: {
+            type: 'boolean',
+            description: 'Automatically fetch all pages (default: true). Set to false for single page only.',
+          },
+          max_results: {
+            type: 'number',
+            description: 'Maximum results to return when fetch_all is true (default: 500)',
+          },
           // Filters
           name: {
             type: 'string',
@@ -115,10 +125,10 @@ export function getFlowTools(): Tool[] {
             items: { type: 'string', enum: ['name'] },
             description: 'Limit tag fields returned (when including tags)',
           },
-          // Pagination
+          // Pagination (only needed if fetch_all is false)
           page_cursor: {
             type: 'string',
-            description: 'Cursor for pagination',
+            description: 'Cursor for pagination (only used when fetch_all is false)',
           },
         },
       },
@@ -524,6 +534,8 @@ export function getFlowTools(): Tool[] {
 
 // Validation schemas
 const listFlowsSchema = z.object({
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().optional(),
   name: z.string().optional(),
   name_contains: z.string().optional(),
   id: z.string().optional(),
@@ -647,7 +659,13 @@ export async function handleFlowTool(
   switch (toolName) {
     case 'klaviyo_flows_list': {
       const input = listFlowsSchema.parse(args);
-      return client.listFlows(input);
+      const { fetch_all, max_results, ...listOptions } = input;
+      
+      // Use auto-pagination by default
+      return fetchAllPages(
+        (cursor) => client.listFlows({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
+        { fetch_all, max_results }
+      );
     }
 
     case 'klaviyo_flows_get': {

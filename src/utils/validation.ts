@@ -1,5 +1,11 @@
 import { z } from 'zod';
 
+// Auto-pagination schema (used by all list operations)
+export const autoPaginationSchema = z.object({
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().min(1).max(10000).optional(),
+});
+
 // Common schemas
 export const paginationSchema = z.object({
   page_size: z.number().min(1).max(100).optional().default(20),
@@ -32,6 +38,9 @@ const listProfilesSortSchema = z.enum(['joined_group_at', '-joined_group_at']).o
 
 // Profile schemas
 export const listProfilesSchema = z.object({
+  // Auto-pagination
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().min(1).max(10000).optional(),
   // Simple filters
   email: z.string().optional(),
   phone_number: z.string().optional(),
@@ -192,6 +201,9 @@ export const unsuppressProfilesSchema = z.object({
 
 // List schemas
 export const listListsSchema = z.object({
+  // Auto-pagination
+  fetch_all: z.boolean().optional(),
+  max_results: z.number().min(1).max(10000).optional(),
   // Filters
   name: z.string().optional(),
   name_contains: z.string().optional(),
