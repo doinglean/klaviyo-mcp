@@ -39,10 +39,15 @@ export function getProfileTools(): Tool[] {
   return [
     {
       name: 'klaviyo_profiles_list',
-      description: 'List profiles (contacts) in Klaviyo. By default fetches ALL profiles automatically (no manual pagination needed). WARNING: Large accounts may have millions of profiles - use filters or set max_results. Supports filtering on subscription status and predictive analytics.',
+      description: 'List profiles (compact: id, email, first_name, last_name). For full profile details, use klaviyo_profiles_get(profile_id). WARNING: Large accounts may have millions of profiles - use filters!',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -594,12 +599,18 @@ export async function handleProfileTool(
   switch (toolName) {
     case 'klaviyo_profiles_list': {
       const input = listProfilesSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listProfiles({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['email', 'phone_number', 'first_name', 'last_name', 'external_id'],
+          detailHint: 'Use klaviyo_profiles_get(profile_id) for full profile details including properties and subscriptions',
+        }
       );
     }
 

@@ -21,10 +21,15 @@ export function getTemplateTools(): Tool[] {
   return [
     {
       name: 'klaviyo_templates_list',
-      description: 'List all email templates. By default fetches ALL templates automatically (no manual pagination needed). Filter by name, editor type, and creation date.',
+      description: 'List all email templates (compact: id, name, editor_type). For full template details including HTML content, use klaviyo_templates_get(template_id). Fetches ALL templates automatically.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -234,6 +239,7 @@ export function getTemplateTools(): Tool[] {
 
 // Validation schemas
 const listTemplatesSchema = z.object({
+  compact: z.boolean().optional(),
   fetch_all: z.boolean().optional(),
   max_results: z.number().optional(),
   name: z.string().optional(),
@@ -295,12 +301,18 @@ export async function handleTemplateTool(
   switch (toolName) {
     case 'klaviyo_templates_list': {
       const input = listTemplatesSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listTemplates({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['name', 'editor_type', 'created', 'updated'],
+          detailHint: 'Use klaviyo_templates_get(template_id) for full template details including HTML content',
+        }
       );
     }
 

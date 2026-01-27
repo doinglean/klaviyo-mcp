@@ -38,10 +38,15 @@ export function getListTools(): Tool[] {
   return [
     {
       name: 'klaviyo_lists_list',
-      description: 'Get all lists in your Klaviyo account. By default fetches ALL lists automatically (no manual pagination needed). Supports filtering, sorting, and relationship includes.',
+      description: 'List all mailing lists (compact: id, name). For full list details including profile count, use klaviyo_lists_get(list_id). Fetches ALL lists automatically.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -346,12 +351,18 @@ export async function handleListTool(
   switch (toolName) {
     case 'klaviyo_lists_list': {
       const input = listListsSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listLists({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['name', 'created', 'updated'],
+          detailHint: 'Use klaviyo_lists_get(list_id) for full list details including profile count',
+        }
       );
     }
 

@@ -27,10 +27,15 @@ export function getSegmentTools(): Tool[] {
   return [
     {
       name: 'klaviyo_segments_list',
-      description: 'List all segments. By default fetches ALL segments automatically (no manual pagination needed). Filter by name, creation date, and more.',
+      description: 'List all segments (compact: id, name, is_active, is_starred). For full segment details including definition, use klaviyo_segments_get(segment_id). Fetches ALL segments automatically.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -341,6 +346,7 @@ export function getSegmentTools(): Tool[] {
 
 // Validation schemas
 const listSegmentsSchema = z.object({
+  compact: z.boolean().optional(),
   fetch_all: z.boolean().optional(),
   max_results: z.number().optional(),
   name: z.string().optional(),
@@ -415,12 +421,18 @@ export async function handleSegmentTool(
   switch (toolName) {
     case 'klaviyo_segments_list': {
       const input = listSegmentsSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listSegments({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['name', 'is_active', 'is_starred', 'created', 'updated'],
+          detailHint: 'Use klaviyo_segments_get(segment_id) for full segment details including definition',
+        }
       );
     }
 

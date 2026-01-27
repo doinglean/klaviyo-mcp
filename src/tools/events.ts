@@ -22,10 +22,15 @@ export function getEventTools(): Tool[] {
     // === EVENTS CRUD ===
     {
       name: 'klaviyo_events_list',
-      description: 'List events. By default fetches ALL events automatically (no manual pagination needed). WARNING: Large accounts may have millions of events - use filters (profile_id, metric_id, datetime range) or set max_results. Events track customer actions like purchases, page views, etc.',
+      description: 'List events (compact: id, timestamp, metric_id, profile_id). For full event details, use klaviyo_events_get(event_id). WARNING: Large accounts may have millions of events - use filters!',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -262,6 +267,7 @@ export function getEventTools(): Tool[] {
 
 // Validation schemas
 const listEventsSchema = z.object({
+  compact: z.boolean().optional(),
   fetch_all: z.boolean().optional(),
   max_results: z.number().optional(),
   profile_id: z.string().optional(),
@@ -326,12 +332,18 @@ export async function handleEventTool(
   switch (toolName) {
     case 'klaviyo_events_list': {
       const input = listEventsSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listEvents({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['timestamp', 'datetime', 'uuid'],
+          detailHint: 'Use klaviyo_events_get(event_id) for full event details including properties',
+        }
       );
     }
 

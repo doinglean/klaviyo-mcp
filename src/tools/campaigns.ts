@@ -33,10 +33,15 @@ export function getCampaignTools(): Tool[] {
     // === CAMPAIGNS CRUD ===
     {
       name: 'klaviyo_campaigns_list',
-      description: 'List all campaigns. By default fetches ALL campaigns automatically (no manual pagination needed). Filter by name, status, channel, and more.',
+      description: 'List all campaigns (compact: id, name, status, channel). For full campaign details, use klaviyo_campaigns_get(campaign_id). Fetches ALL campaigns automatically.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -631,6 +636,7 @@ export function getCampaignTools(): Tool[] {
 
 // Validation schemas
 const listCampaignsSchema = z.object({
+  compact: z.boolean().optional(),
   fetch_all: z.boolean().optional(),
   max_results: z.number().optional(),
   name: z.string().optional(),
@@ -721,12 +727,18 @@ export async function handleCampaignTool(
   switch (toolName) {
     case 'klaviyo_campaigns_list': {
       const input = listCampaignsSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listCampaigns({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['name', 'status', 'archived', 'created_at', 'scheduled_at', 'send_time'],
+          detailHint: 'Use klaviyo_campaigns_get(campaign_id) for full campaign details including messages and audiences',
+        }
       );
     }
 

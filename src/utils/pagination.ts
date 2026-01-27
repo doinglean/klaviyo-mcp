@@ -2,6 +2,7 @@
  * Auto-pagination utilities for Klaviyo MCP
  * 
  * Fetches all pages automatically so AI agents don't have to manually paginate.
+ * Supports compact mode for smaller responses.
  */
 
 export interface PaginatedResponse<T = unknown> {
@@ -21,7 +22,9 @@ export interface AutoPaginatedResponse<T = unknown> {
     total: number;
     fetched: number;
     truncated: boolean;
+    compact: boolean;
   };
+  _hint?: string;
 }
 
 export interface PaginationOptions {
@@ -29,6 +32,12 @@ export interface PaginationOptions {
   fetch_all?: boolean;
   /** Maximum results to return (default: 500, safety limit) */
   max_results?: number;
+  /** Return only essential fields (default: true) */
+  compact?: boolean;
+  /** Fields to keep in compact mode */
+  compactFields?: string[];
+  /** Hint for getting full details */
+  detailHint?: string;
 }
 
 const DEFAULT_MAX_RESULTS = 500;
@@ -46,18 +55,43 @@ function extractCursor(nextUrl: string): string | null {
 }
 
 /**
- * Wraps a list function to support auto-pagination
+ * Compacts a data item to only include specified fields
+ */
+function compactItem<T extends { id?: string; type?: string; attributes?: Record<string, unknown> }>(
+  item: T,
+  fields: string[]
+): T {
+  if (!item.attributes) return item;
+  
+  const compactedAttributes: Record<string, unknown> = {};
+  for (const field of fields) {
+    if (field in item.attributes) {
+      compactedAttributes[field] = item.attributes[field];
+    }
+  }
+  
+  return {
+    ...item,
+    attributes: compactedAttributes,
+  } as T;
+}
+
+/**
+ * Wraps a list function to support auto-pagination and compact mode
  * 
  * @param fetchFn - Function that fetches a single page
- * @param options - Pagination options (fetch_all, max_results)
+ * @param options - Pagination options (fetch_all, max_results, compact, compactFields)
  * @returns All results with metadata
  */
-export async function fetchAllPages<T>(
+export async function fetchAllPages<T extends { id?: string; type?: string; attributes?: Record<string, unknown> }>(
   fetchFn: (cursor?: string) => Promise<PaginatedResponse<T>>,
   options: PaginationOptions = {}
 ): Promise<AutoPaginatedResponse<T>> {
   const fetchAll = options.fetch_all !== false; // Default true
   const maxResults = options.max_results ?? DEFAULT_MAX_RESULTS;
+  const compact = options.compact !== false; // Default true
+  const compactFields = options.compactFields ?? [];
+  const detailHint = options.detailHint;
   
   const allData: T[] = [];
   const allIncluded: unknown[] = [];
@@ -73,15 +107,26 @@ export async function fetchAllPages<T>(
   
   // If not fetching all or no next page, return single page
   if (!fetchAll || !firstPage.links?.next) {
-    return {
-      data: allData,
-      included: allIncluded.length > 0 ? allIncluded : undefined,
+    const resultData = compact && compactFields.length > 0 
+      ? allData.map(item => compactItem(item, compactFields))
+      : allData;
+    
+    const result: AutoPaginatedResponse<T> = {
+      data: resultData,
+      included: (!compact && allIncluded.length > 0) ? allIncluded : undefined,
       meta: {
         total: allData.length,
         fetched: allData.length,
         truncated: false,
+        compact: compact && compactFields.length > 0,
       },
     };
+    
+    if (compact && detailHint) {
+      result._hint = detailHint;
+    }
+    
+    return result;
   }
   
   // Fetch remaining pages
@@ -111,13 +156,25 @@ export async function fetchAllPages<T>(
     truncated = true;
   }
   
-  return {
-    data: allData,
-    included: allIncluded.length > 0 ? allIncluded : undefined,
+  // Apply compact mode
+  const resultData = compact && compactFields.length > 0 
+    ? allData.map(item => compactItem(item, compactFields))
+    : allData;
+  
+  const result: AutoPaginatedResponse<T> = {
+    data: resultData,
+    included: (!compact && allIncluded.length > 0) ? allIncluded : undefined,
     meta: {
       total: allData.length,
       fetched: allData.length,
       truncated,
+      compact: compact && compactFields.length > 0,
     },
   };
+  
+  if (compact && detailHint) {
+    result._hint = detailHint;
+  }
+  
+  return result;
 }

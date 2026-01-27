@@ -42,10 +42,15 @@ export function getFlowTools(): Tool[] {
   return [
     {
       name: 'klaviyo_flows_list',
-      description: 'List all automation flows with filtering and sorting. By default fetches ALL flows automatically (no manual pagination needed). Filter by name, status, trigger type, and more.',
+      description: 'List all automation flows (compact: id, name, status, trigger_type). For full details including actions/messages, use klaviyo_flows_get(flow_id). Fetches ALL flows automatically.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -534,6 +539,7 @@ export function getFlowTools(): Tool[] {
 
 // Validation schemas
 const listFlowsSchema = z.object({
+  compact: z.boolean().optional(),
   fetch_all: z.boolean().optional(),
   max_results: z.number().optional(),
   name: z.string().optional(),
@@ -659,12 +665,18 @@ export async function handleFlowTool(
   switch (toolName) {
     case 'klaviyo_flows_list': {
       const input = listFlowsSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listFlows({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['name', 'status', 'trigger_type', 'archived'],
+          detailHint: 'Use klaviyo_flows_get(flow_id) for full flow details including actions and messages',
+        }
       );
     }
 

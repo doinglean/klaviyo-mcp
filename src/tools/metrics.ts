@@ -28,10 +28,15 @@ export function getMetricTools(): Tool[] {
     // === METRICS LIST & GET ===
     {
       name: 'klaviyo_metrics_list',
-      description: 'List all metrics (event types) in your Klaviyo account. By default fetches ALL metrics automatically (no manual pagination needed). Metrics represent different types of events like "Placed Order", "Opened Email", etc.',
+      description: 'List all metrics/event types (compact: id, name, integration). For full metric details, use klaviyo_metrics_get(metric_id). Fetches ALL metrics automatically.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -306,6 +311,7 @@ export function getMetricTools(): Tool[] {
 
 // Validation schemas
 const listMetricsSchema = z.object({
+  compact: z.boolean().optional(),
   fetch_all: z.boolean().optional(),
   max_results: z.number().optional(),
   name: z.string().optional(),
@@ -366,12 +372,18 @@ export async function handleMetricTool(
   switch (toolName) {
     case 'klaviyo_metrics_list': {
       const input = listMetricsSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listMetrics({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['name', 'created', 'updated', 'integration'],
+          detailHint: 'Use klaviyo_metrics_get(metric_id) for full metric details',
+        }
       );
     }
 

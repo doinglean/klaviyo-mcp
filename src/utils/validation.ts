@@ -38,6 +38,8 @@ const listProfilesSortSchema = z.enum(['joined_group_at', '-joined_group_at']).o
 
 // Profile schemas
 export const listProfilesSchema = z.object({
+  // Compact mode
+  compact: z.boolean().optional(),
   // Auto-pagination
   fetch_all: z.boolean().optional(),
   max_results: z.number().min(1).max(10000).optional(),
@@ -201,6 +203,8 @@ export const unsuppressProfilesSchema = z.object({
 
 // List schemas
 export const listListsSchema = z.object({
+  // Compact mode
+  compact: z.boolean().optional(),
   // Auto-pagination
   fetch_all: z.boolean().optional(),
   max_results: z.number().min(1).max(10000).optional(),

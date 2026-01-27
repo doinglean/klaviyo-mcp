@@ -19,10 +19,15 @@ export function getTagTools(): Tool[] {
   return [
     {
       name: 'klaviyo_tags_list',
-      description: 'List all tags. By default fetches ALL tags automatically (no manual pagination needed). Tags are used to organize and categorize resources.',
+      description: 'List all tags (compact: id, name). For full tag details, use klaviyo_tags_get(tag_id). Fetches ALL tags automatically.',
       inputSchema: {
         type: 'object',
         properties: {
+          // Compact mode
+          compact: {
+            type: 'boolean',
+            description: 'Return only essential fields (default: true). Set to false for all fields.',
+          },
           // Auto-pagination
           fetch_all: {
             type: 'boolean',
@@ -391,6 +396,7 @@ export function getTagTools(): Tool[] {
 
 // Validation schemas
 const listTagsSchema = z.object({
+  compact: z.boolean().optional(),
   fetch_all: z.boolean().optional(),
   max_results: z.number().optional(),
   name: z.string().optional(),
@@ -487,12 +493,18 @@ export async function handleTagTool(
   switch (toolName) {
     case 'klaviyo_tags_list': {
       const input = listTagsSchema.parse(args);
-      const { fetch_all, max_results, ...listOptions } = input;
+      const { compact, fetch_all, max_results, ...listOptions } = input;
       
-      // Use auto-pagination by default
+      // Use auto-pagination with compact mode by default
       return fetchAllPages(
         (cursor) => client.listTags({ ...listOptions, page_cursor: cursor }) as Promise<PaginatedResponse>,
-        { fetch_all, max_results }
+        { 
+          fetch_all, 
+          max_results,
+          compact,
+          compactFields: ['name'],
+          detailHint: 'Use klaviyo_tags_get(tag_id) for full tag details including tag group',
+        }
       );
     }
 
