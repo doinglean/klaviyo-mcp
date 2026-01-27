@@ -201,25 +201,6 @@ export function getTemplateTools(): Tool[] {
       },
     },
     {
-      name: 'klaviyo_templates_get_tags',
-      description: 'Get all tags associated with a template.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          template_id: {
-            type: 'string',
-            description: 'The Klaviyo template ID',
-          },
-          fields_tag: {
-            type: 'array',
-            items: { type: 'string', enum: ['name'] },
-            description: 'Limit tag fields returned',
-          },
-        },
-        required: ['template_id'],
-      },
-    },
-    {
       name: 'klaviyo_templates_get_universal_content',
       description: 'Get universal content blocks for a template.',
       inputSchema: {
@@ -289,11 +270,6 @@ const renderTemplateSchema = z.object({
   context: z.record(z.unknown()).optional(),
 });
 
-const getTemplateTagsSchema = z.object({
-  template_id: z.string(),
-  fields_tag: z.array(z.string()).optional(),
-});
-
 const getTemplateUniversalContentSchema = z.object({
   template_id: z.string(),
   fields_universal_content: z.array(z.string()).optional(),
@@ -342,11 +318,6 @@ export async function handleTemplateTool(
     case 'klaviyo_templates_render': {
       const input = renderTemplateSchema.parse(args);
       return client.renderTemplate(input.template_id, input.context);
-    }
-
-    case 'klaviyo_templates_get_tags': {
-      const input = getTemplateTagsSchema.parse(args);
-      return client.getTemplateTags(input.template_id, { fields_tag: input.fields_tag });
     }
 
     case 'klaviyo_templates_get_universal_content': {

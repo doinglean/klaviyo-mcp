@@ -7,6 +7,8 @@ import { getEventTools, handleEventTool } from './events.js';
 import { getMetricTools, handleMetricTool } from './metrics.js';
 import { getSegmentTools, handleSegmentTool } from './segments.js';
 import { getTemplateTools, handleTemplateTool } from './templates.js';
+import { getFlowTools, handleFlowTool } from './flows.js';
+import { getTagTools, handleTagTool } from './tags.js';
 
 export function getAllTools(): Tool[] {
   return [
@@ -17,6 +19,8 @@ export function getAllTools(): Tool[] {
     ...getMetricTools(),
     ...getSegmentTools(),
     ...getTemplateTools(),
+    ...getFlowTools(),
+    ...getTagTools(),
   ];
 }
 
@@ -58,6 +62,16 @@ export async function handleToolCall(
   // Template tools
   if (toolName.startsWith('klaviyo_templates_')) {
     return handleTemplateTool(client, toolName, args);
+  }
+
+  // Flow tools
+  if (toolName.startsWith('klaviyo_flows_') || toolName.startsWith('klaviyo_flow_')) {
+    return handleFlowTool(client, toolName, args);
+  }
+
+  // Tag tools
+  if (toolName.startsWith('klaviyo_tags_') || toolName.startsWith('klaviyo_tag_')) {
+    return handleTagTool(client, toolName, args);
   }
 
   throw new Error(`Unknown tool: ${toolName}`);

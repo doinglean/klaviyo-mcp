@@ -1915,14 +1915,6 @@ export class KlaviyoClient {
     return this.request<unknown>('/api/template-render', { method: 'POST', body });
   }
 
-  async getTemplateTags(templateId: string, options: {
-    fields_tag?: string[];
-  } = {}): Promise<unknown> {
-    const params: Record<string, string | number | undefined> = {};
-    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
-    return this.request<unknown>(`/api/templates/${templateId}/tags`, { params });
-  }
-
   async getTemplateUniversalContent(templateId: string, options: {
     fields_universal_content?: string[];
   } = {}): Promise<unknown> {
@@ -1931,5 +1923,380 @@ export class KlaviyoClient {
       params['fields[template-universal-content]'] = options.fields_universal_content.join(',');
     }
     return this.request<unknown>(`/api/templates/${templateId}/template-universal-content`, { params });
+  }
+
+  // ============================================================
+  // FLOW METHODS
+  // ============================================================
+
+  private buildFlowFilter(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    status?: string;
+    archived?: boolean;
+    trigger_type?: string;
+    created_after?: string;
+    created_before?: string;
+    updated_after?: string;
+    filter?: string;
+  }): string | undefined {
+    if (options.filter) return options.filter;
+
+    const filters: string[] = [];
+    if (options.name) filters.push(`equals(name,"${options.name}")`);
+    if (options.name_contains) filters.push(`contains(name,"${options.name_contains}")`);
+    if (options.id) filters.push(`equals(id,"${options.id}")`);
+    if (options.status) filters.push(`equals(status,"${options.status}")`);
+    if (options.archived !== undefined) filters.push(`equals(archived,${options.archived})`);
+    if (options.trigger_type) filters.push(`equals(trigger_type,"${options.trigger_type}")`);
+    if (options.created_after) filters.push(`greater-than(created,${options.created_after})`);
+    if (options.created_before) filters.push(`less-than(created,${options.created_before})`);
+    if (options.updated_after) filters.push(`greater-than(updated,${options.updated_after})`);
+
+    if (filters.length === 0) return undefined;
+    return filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+  }
+
+  async listFlows(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    status?: string;
+    archived?: boolean;
+    trigger_type?: string;
+    created_after?: string;
+    created_before?: string;
+    updated_after?: string;
+    filter?: string;
+    sort?: string;
+    include?: string[];
+    fields_flow?: string[];
+    fields_flow_action?: string[];
+    fields_tag?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+
+    const filter = this.buildFlowFilter(options);
+    if (filter) params['filter'] = filter;
+    if (options.sort) params['sort'] = options.sort;
+    if (options.include?.length) params['include'] = options.include.join(',');
+    if (options.fields_flow?.length) params['fields[flow]'] = options.fields_flow.join(',');
+    if (options.fields_flow_action?.length) params['fields[flow-action]'] = options.fields_flow_action.join(',');
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+
+    return this.request<unknown>('/api/flows', { params });
+  }
+
+  async getFlow(flowId: string, options: {
+    include?: string[];
+    fields_flow?: string[];
+    fields_flow_action?: string[];
+    fields_tag?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.include?.length) params['include'] = options.include.join(',');
+    if (options.fields_flow?.length) params['fields[flow]'] = options.fields_flow.join(',');
+    if (options.fields_flow_action?.length) params['fields[flow-action]'] = options.fields_flow_action.join(',');
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+
+    return this.request<unknown>(`/api/flows/${flowId}`, { params });
+  }
+
+  async updateFlow(flowId: string, options: {
+    status?: 'draft' | 'live' | 'manual';
+  }): Promise<unknown> {
+    const attributes: Record<string, unknown> = {};
+    if (options.status) attributes.status = options.status;
+
+    const body = {
+      data: {
+        type: 'flow',
+        id: flowId,
+        attributes,
+      },
+    };
+    return this.request<unknown>(`/api/flows/${flowId}`, { method: 'PATCH', body });
+  }
+
+  async getFlowActions(flowId: string, options: {
+    filter?: string;
+    sort?: string;
+    fields_flow_action?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+    if (options.filter) params['filter'] = options.filter;
+    if (options.sort) params['sort'] = options.sort;
+    if (options.fields_flow_action?.length) params['fields[flow-action]'] = options.fields_flow_action.join(',');
+
+    return this.request<unknown>(`/api/flows/${flowId}/flow-actions`, { params });
+  }
+
+  async getFlowMessages(flowId: string, options: {
+    fields_flow_message?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    // First get all flow actions, then get messages for each action that is a message type
+    const actionsResult = await this.request<{
+      data: Array<{ type: string; id: string; attributes?: { action_type?: string } }>;
+    }>(`/api/flows/${flowId}/flow-actions`);
+    
+    // Filter to only message-type actions (SEND_EMAIL, SEND_SMS)
+    const messageActionIds = actionsResult.data
+      .filter(action => ['SEND_EMAIL', 'SEND_SMS'].includes(action.attributes?.action_type || ''))
+      .map(action => action.id);
+
+    if (messageActionIds.length === 0) {
+      return { data: [] };
+    }
+
+    // Get messages for each action
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_flow_message?.length) params['fields[flow-message]'] = options.fields_flow_message.join(',');
+
+    const allMessages: Array<{ type?: string; [key: string]: unknown }> = [];
+    for (const actionId of messageActionIds) {
+      try {
+        const actionResult = await this.request<{
+          data: unknown;
+          included?: Array<{ type?: string; [key: string]: unknown }>;
+        }>(`/api/flow-actions/${actionId}`, { 
+          params: { ...params, include: 'flow-messages' } 
+        });
+        const messages = actionResult.included?.filter(item => item.type === 'flow-message') || [];
+        allMessages.push(...messages);
+      } catch {
+        // Skip actions that fail
+      }
+    }
+
+    return { data: allMessages };
+  }
+
+  async getFlowTags(flowId: string, options: {
+    fields_tag?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+    return this.request<unknown>(`/api/flows/${flowId}/tags`, { params });
+  }
+
+  async getFlowAction(actionId: string, options: {
+    include?: string[];
+    fields_flow_action?: string[];
+    fields_flow?: string[];
+    fields_flow_message?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.include?.length) params['include'] = options.include.join(',');
+    if (options.fields_flow_action?.length) params['fields[flow-action]'] = options.fields_flow_action.join(',');
+    if (options.fields_flow?.length) params['fields[flow]'] = options.fields_flow.join(',');
+    if (options.fields_flow_message?.length) params['fields[flow-message]'] = options.fields_flow_message.join(',');
+
+    return this.request<unknown>(`/api/flow-actions/${actionId}`, { params });
+  }
+
+  async getFlowMessage(messageId: string, options: {
+    include?: string[];
+    fields_flow_message?: string[];
+    fields_flow_action?: string[];
+    fields_template?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.include?.length) params['include'] = options.include.join(',');
+    if (options.fields_flow_message?.length) params['fields[flow-message]'] = options.fields_flow_message.join(',');
+    if (options.fields_flow_action?.length) params['fields[flow-action]'] = options.fields_flow_action.join(',');
+    if (options.fields_template?.length) params['fields[template]'] = options.fields_template.join(',');
+
+    return this.request<unknown>(`/api/flow-messages/${messageId}`, { params });
+  }
+
+  // ============================================================
+  // TAG METHODS
+  // ============================================================
+
+  private buildTagFilter(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    filter?: string;
+  }): string | undefined {
+    if (options.filter) return options.filter;
+
+    const filters: string[] = [];
+    if (options.name) filters.push(`equals(name,"${options.name}")`);
+    if (options.name_contains) filters.push(`contains(name,"${options.name_contains}")`);
+    if (options.id) filters.push(`equals(id,"${options.id}")`);
+
+    if (filters.length === 0) return undefined;
+    return filters.length === 1 ? filters[0] : `and(${filters.join(',')})`;
+  }
+
+  async listTags(options: {
+    name?: string;
+    name_contains?: string;
+    id?: string;
+    filter?: string;
+    sort?: string;
+    fields_tag?: string[];
+    fields_tag_group?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+
+    const filter = this.buildTagFilter(options);
+    if (filter) params['filter'] = filter;
+    if (options.sort) params['sort'] = options.sort;
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+    if (options.fields_tag_group?.length) params['fields[tag-group]'] = options.fields_tag_group.join(',');
+
+    return this.request<unknown>('/api/tags', { params });
+  }
+
+  async getTag(tagId: string, options: {
+    fields_tag?: string[];
+    fields_tag_group?: string[];
+    include?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+    if (options.fields_tag_group?.length) params['fields[tag-group]'] = options.fields_tag_group.join(',');
+    if (options.include?.length) params['include'] = options.include.join(',');
+
+    return this.request<unknown>(`/api/tags/${tagId}`, { params });
+  }
+
+  async createTag(name: string, tagGroupId?: string): Promise<unknown> {
+    const body: Record<string, unknown> = {
+      data: {
+        type: 'tag',
+        attributes: { name },
+      },
+    };
+
+    if (tagGroupId) {
+      (body.data as Record<string, unknown>).relationships = {
+        'tag-group': {
+          data: { type: 'tag-group', id: tagGroupId },
+        },
+      };
+    }
+
+    return this.request<unknown>('/api/tags', { method: 'POST', body });
+  }
+
+  async updateTag(tagId: string, name: string): Promise<unknown> {
+    const body = {
+      data: {
+        type: 'tag',
+        id: tagId,
+        attributes: { name },
+      },
+    };
+    return this.request<unknown>(`/api/tags/${tagId}`, { method: 'PATCH', body });
+  }
+
+  async deleteTag(tagId: string): Promise<void> {
+    await this.request<void>(`/api/tags/${tagId}`, { method: 'DELETE' });
+  }
+
+  // Tag Group methods
+  async listTagGroups(options: {
+    name?: string;
+    filter?: string;
+    sort?: string;
+    fields_tag_group?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+
+    if (options.filter) {
+      params['filter'] = options.filter;
+    } else if (options.name) {
+      params['filter'] = `equals(name,"${options.name}")`;
+    }
+    if (options.sort) params['sort'] = options.sort;
+    if (options.fields_tag_group?.length) params['fields[tag-group]'] = options.fields_tag_group.join(',');
+
+    return this.request<unknown>('/api/tag-groups', { params });
+  }
+
+  async getTagGroup(tagGroupId: string, options: {
+    fields_tag_group?: string[];
+    fields_tag?: string[];
+    include?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_tag_group?.length) params['fields[tag-group]'] = options.fields_tag_group.join(',');
+    if (options.fields_tag?.length) params['fields[tag]'] = options.fields_tag.join(',');
+    if (options.include?.length) params['include'] = options.include.join(',');
+
+    return this.request<unknown>(`/api/tag-groups/${tagGroupId}`, { params });
+  }
+
+  async createTagGroup(name: string, options: {
+    exclusive?: boolean;
+    default?: boolean;
+  } = {}): Promise<unknown> {
+    const attributes: Record<string, unknown> = { name };
+    if (options.exclusive !== undefined) attributes.exclusive = options.exclusive;
+    if (options.default !== undefined) attributes.default = options.default;
+
+    const body = {
+      data: {
+        type: 'tag-group',
+        attributes,
+      },
+    };
+    return this.request<unknown>('/api/tag-groups', { method: 'POST', body });
+  }
+
+  async updateTagGroup(tagGroupId: string, options: {
+    name?: string;
+    exclusive?: boolean;
+    default?: boolean;
+  }): Promise<unknown> {
+    const attributes: Record<string, unknown> = {};
+    if (options.name) attributes.name = options.name;
+    if (options.exclusive !== undefined) attributes.exclusive = options.exclusive;
+    if (options.default !== undefined) attributes.default = options.default;
+
+    const body = {
+      data: {
+        type: 'tag-group',
+        id: tagGroupId,
+        attributes,
+      },
+    };
+    return this.request<unknown>(`/api/tag-groups/${tagGroupId}`, { method: 'PATCH', body });
+  }
+
+  async deleteTagGroup(tagGroupId: string): Promise<void> {
+    await this.request<void>(`/api/tag-groups/${tagGroupId}`, { method: 'DELETE' });
+  }
+
+  // Tag relationship methods (adding/removing tags from resources)
+  async addTagToResource(tagId: string, resourceType: 'campaign' | 'flow' | 'list' | 'segment', resourceId: string): Promise<void> {
+    const body = {
+      data: [{ type: resourceType, id: resourceId }],
+    };
+    await this.request<void>(`/api/tags/${tagId}/relationships/${resourceType}s`, { method: 'POST', body });
+  }
+
+  async removeTagFromResource(tagId: string, resourceType: 'campaign' | 'flow' | 'list' | 'segment', resourceId: string): Promise<void> {
+    const body = {
+      data: [{ type: resourceType, id: resourceId }],
+    };
+    await this.request<void>(`/api/tags/${tagId}/relationships/${resourceType}s`, { method: 'DELETE', body });
   }
 }
