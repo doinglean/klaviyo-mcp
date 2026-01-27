@@ -318,6 +318,207 @@ export function getFlowTools(): Tool[] {
         required: ['message_id'],
       },
     },
+    {
+      name: 'klaviyo_flows_delete',
+      description: 'Delete a flow permanently. This action cannot be undone. The flow must be in draft status to be deleted.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          flow_id: {
+            type: 'string',
+            description: 'The Klaviyo flow ID to delete',
+          },
+        },
+        required: ['flow_id'],
+      },
+    },
+    {
+      name: 'klaviyo_flow_actions_update',
+      description: 'Update a flow action status. Use this to enable/disable individual steps within a flow.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action_id: {
+            type: 'string',
+            description: 'The Klaviyo flow action ID to update',
+          },
+          status: {
+            type: 'string',
+            enum: ['draft', 'live', 'manual'],
+            description: 'New action status: "draft" (disabled), "live" (active), or "manual"',
+          },
+        },
+        required: ['action_id', 'status'],
+      },
+    },
+    {
+      name: 'klaviyo_flow_actions_get_messages',
+      description: 'Get all messages associated with a flow action. Returns email/SMS content for message-type actions.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action_id: {
+            type: 'string',
+            description: 'The Klaviyo flow action ID',
+          },
+          fields_flow_message: {
+            type: 'array',
+            items: { type: 'string', enum: FLOW_MESSAGE_FIELDS },
+            description: 'Limit flow message fields returned',
+          },
+          page_cursor: {
+            type: 'string',
+            description: 'Cursor for pagination',
+          },
+        },
+        required: ['action_id'],
+      },
+    },
+    {
+      name: 'klaviyo_flow_actions_get_flow',
+      description: 'Get the parent flow of a flow action.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          action_id: {
+            type: 'string',
+            description: 'The Klaviyo flow action ID',
+          },
+          fields_flow: {
+            type: 'array',
+            items: { type: 'string', enum: FLOW_FIELDS },
+            description: 'Limit flow fields returned',
+          },
+        },
+        required: ['action_id'],
+      },
+    },
+    {
+      name: 'klaviyo_flow_messages_get_template',
+      description: 'Get the template associated with a flow message.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          message_id: {
+            type: 'string',
+            description: 'The Klaviyo flow message ID',
+          },
+          fields_template: {
+            type: 'array',
+            items: { type: 'string', enum: ['name', 'editor_type', 'html', 'text', 'created', 'updated'] },
+            description: 'Limit template fields returned',
+          },
+        },
+        required: ['message_id'],
+      },
+    },
+    {
+      name: 'klaviyo_flow_messages_get_action',
+      description: 'Get the parent action of a flow message.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          message_id: {
+            type: 'string',
+            description: 'The Klaviyo flow message ID',
+          },
+          fields_flow_action: {
+            type: 'array',
+            items: { type: 'string', enum: FLOW_ACTION_FIELDS },
+            description: 'Limit flow action fields returned',
+          },
+        },
+        required: ['message_id'],
+      },
+    },
+    {
+      name: 'klaviyo_flow_values_report',
+      description: 'Generate a flow performance report with aggregate values. Get metrics like recipients, opens, clicks, revenue for flows.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          flow_id: {
+            type: 'string',
+            description: 'Filter by specific flow ID',
+          },
+          flow_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by multiple flow IDs',
+          },
+          filter: {
+            type: 'string',
+            description: 'Raw Klaviyo filter string (e.g., equals(flow_id,"abc123"))',
+          },
+          statistics: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: [
+                'recipients', 'opens', 'open_rate', 'clicks', 'click_rate',
+                'revenue', 'revenue_per_recipient', 'unsubscribes', 'spam_complaints',
+                'bounces', 'bounce_rate', 'deliveries', 'delivery_rate'
+              ],
+            },
+            description: 'Metrics to include in report',
+          },
+          timeframe_start: {
+            type: 'string',
+            description: 'ISO 8601 datetime - start of timeframe',
+          },
+          timeframe_end: {
+            type: 'string',
+            description: 'ISO 8601 datetime - end of timeframe',
+          },
+        },
+      },
+    },
+    {
+      name: 'klaviyo_flow_series_report',
+      description: 'Generate a flow performance time series report. Get metrics over time for trend analysis.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          flow_id: {
+            type: 'string',
+            description: 'Filter by specific flow ID',
+          },
+          flow_ids: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Filter by multiple flow IDs',
+          },
+          filter: {
+            type: 'string',
+            description: 'Raw Klaviyo filter string',
+          },
+          statistics: {
+            type: 'array',
+            items: {
+              type: 'string',
+              enum: [
+                'recipients', 'opens', 'open_rate', 'clicks', 'click_rate',
+                'revenue', 'revenue_per_recipient', 'unsubscribes', 'bounces'
+              ],
+            },
+            description: 'Metrics to include in report',
+          },
+          timeframe_start: {
+            type: 'string',
+            description: 'ISO 8601 datetime - start of timeframe',
+          },
+          timeframe_end: {
+            type: 'string',
+            description: 'ISO 8601 datetime - end of timeframe',
+          },
+          interval: {
+            type: 'string',
+            enum: ['daily', 'weekly', 'monthly'],
+            description: 'Time interval for grouping data',
+          },
+        },
+      },
+    },
   ];
 }
 
@@ -389,6 +590,55 @@ const getFlowMessageSchema = z.object({
   fields_template: z.array(z.string()).optional(),
 });
 
+const deleteFlowSchema = z.object({
+  flow_id: z.string(),
+});
+
+const updateFlowActionSchema = z.object({
+  action_id: z.string(),
+  status: z.enum(['draft', 'live', 'manual']),
+});
+
+const getFlowActionMessagesSchema = z.object({
+  action_id: z.string(),
+  fields_flow_message: z.array(z.string()).optional(),
+  page_cursor: z.string().optional(),
+});
+
+const getFlowActionFlowSchema = z.object({
+  action_id: z.string(),
+  fields_flow: z.array(z.string()).optional(),
+});
+
+const getFlowMessageTemplateSchema = z.object({
+  message_id: z.string(),
+  fields_template: z.array(z.string()).optional(),
+});
+
+const getFlowMessageActionSchema = z.object({
+  message_id: z.string(),
+  fields_flow_action: z.array(z.string()).optional(),
+});
+
+const flowValuesReportSchema = z.object({
+  flow_id: z.string().optional(),
+  flow_ids: z.array(z.string()).optional(),
+  filter: z.string().optional(),
+  statistics: z.array(z.string()).optional(),
+  timeframe_start: z.string().optional(),
+  timeframe_end: z.string().optional(),
+});
+
+const flowSeriesReportSchema = z.object({
+  flow_id: z.string().optional(),
+  flow_ids: z.array(z.string()).optional(),
+  filter: z.string().optional(),
+  statistics: z.array(z.string()).optional(),
+  timeframe_start: z.string().optional(),
+  timeframe_end: z.string().optional(),
+  interval: z.string().optional(),
+});
+
 export async function handleFlowTool(
   client: KlaviyoClient,
   toolName: string,
@@ -455,6 +705,105 @@ export async function handleFlowTool(
         fields_flow_message: input.fields_flow_message,
         fields_flow_action: input.fields_flow_action,
         fields_template: input.fields_template,
+      });
+    }
+
+    case 'klaviyo_flows_delete': {
+      const input = deleteFlowSchema.parse(args);
+      await client.deleteFlow(input.flow_id);
+      return { success: true, message: `Flow ${input.flow_id} deleted successfully` };
+    }
+
+    case 'klaviyo_flow_actions_update': {
+      const input = updateFlowActionSchema.parse(args);
+      return client.updateFlowAction(input.action_id, { status: input.status });
+    }
+
+    case 'klaviyo_flow_actions_get_messages': {
+      const input = getFlowActionMessagesSchema.parse(args);
+      return client.getFlowActionMessages(input.action_id, {
+        fields_flow_message: input.fields_flow_message,
+        page_cursor: input.page_cursor,
+      });
+    }
+
+    case 'klaviyo_flow_actions_get_flow': {
+      const input = getFlowActionFlowSchema.parse(args);
+      return client.getFlowActionFlow(input.action_id, {
+        fields_flow: input.fields_flow,
+      });
+    }
+
+    case 'klaviyo_flow_messages_get_template': {
+      const input = getFlowMessageTemplateSchema.parse(args);
+      return client.getFlowMessageTemplate(input.message_id, {
+        fields_template: input.fields_template,
+      });
+    }
+
+    case 'klaviyo_flow_messages_get_action': {
+      const input = getFlowMessageActionSchema.parse(args);
+      return client.getFlowMessageAction(input.message_id, {
+        fields_flow_action: input.fields_flow_action,
+      });
+    }
+
+    case 'klaviyo_flow_values_report': {
+      const input = flowValuesReportSchema.parse(args);
+      
+      // Build filter
+      let filter = input.filter;
+      if (!filter) {
+        if (input.flow_id) {
+          filter = `equals(flow_id,"${input.flow_id}")`;
+        } else if (input.flow_ids?.length) {
+          filter = `any(flow_id,["${input.flow_ids.join('","')}"])`;
+        }
+      }
+      
+      if (!filter) {
+        throw new Error('At least one of flow_id, flow_ids, or filter is required');
+      }
+
+      const timeframe = input.timeframe_start || input.timeframe_end ? {
+        start: input.timeframe_start,
+        end: input.timeframe_end,
+      } : undefined;
+
+      return client.createFlowValuesReport({
+        filter,
+        statistics: input.statistics,
+        timeframe,
+      });
+    }
+
+    case 'klaviyo_flow_series_report': {
+      const input = flowSeriesReportSchema.parse(args);
+      
+      // Build filter
+      let filter = input.filter;
+      if (!filter) {
+        if (input.flow_id) {
+          filter = `equals(flow_id,"${input.flow_id}")`;
+        } else if (input.flow_ids?.length) {
+          filter = `any(flow_id,["${input.flow_ids.join('","')}"])`;
+        }
+      }
+      
+      if (!filter) {
+        throw new Error('At least one of flow_id, flow_ids, or filter is required');
+      }
+
+      const timeframe = input.timeframe_start || input.timeframe_end ? {
+        start: input.timeframe_start,
+        end: input.timeframe_end,
+      } : undefined;
+
+      return client.createFlowSeriesReport({
+        filter,
+        statistics: input.statistics,
+        timeframe,
+        interval: input.interval,
       });
     }
 

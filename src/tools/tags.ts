@@ -311,6 +311,71 @@ export function getTagTools(): Tool[] {
         required: ['tag_id', 'resource_type', 'resource_id'],
       },
     },
+    {
+      name: 'klaviyo_tags_get_resources',
+      description: 'Get all resources tagged with a specific tag. Returns flows, campaigns, lists, or segments.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          tag_id: {
+            type: 'string',
+            description: 'The Klaviyo tag ID',
+          },
+          resource_type: {
+            type: 'string',
+            enum: ['campaigns', 'flows', 'lists', 'segments'],
+            description: 'Type of resources to retrieve',
+          },
+          page_cursor: {
+            type: 'string',
+            description: 'Cursor for pagination',
+          },
+        },
+        required: ['tag_id', 'resource_type'],
+      },
+    },
+    {
+      name: 'klaviyo_tags_get_tag_group',
+      description: 'Get the tag group that contains a specific tag.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          tag_id: {
+            type: 'string',
+            description: 'The Klaviyo tag ID',
+          },
+          fields_tag_group: {
+            type: 'array',
+            items: { type: 'string', enum: TAG_GROUP_FIELDS },
+            description: 'Limit tag group fields returned',
+          },
+        },
+        required: ['tag_id'],
+      },
+    },
+    {
+      name: 'klaviyo_tag_groups_get_tags',
+      description: 'Get all tags within a specific tag group.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          tag_group_id: {
+            type: 'string',
+            description: 'The Klaviyo tag group ID',
+          },
+          fields_tag: {
+            type: 'array',
+            items: { type: 'string', enum: TAG_FIELDS },
+            description: 'Limit tag fields returned',
+          },
+          page_cursor: {
+            type: 'string',
+            description: 'Cursor for pagination',
+          },
+        },
+        required: ['tag_group_id'],
+      },
+    },
   ];
 }
 
@@ -383,6 +448,23 @@ const tagResourceSchema = z.object({
   tag_id: z.string(),
   resource_type: z.enum(['campaign', 'flow', 'list', 'segment']),
   resource_id: z.string(),
+});
+
+const getTaggedResourcesSchema = z.object({
+  tag_id: z.string(),
+  resource_type: z.enum(['campaigns', 'flows', 'lists', 'segments']),
+  page_cursor: z.string().optional(),
+});
+
+const getTagTagGroupSchema = z.object({
+  tag_id: z.string(),
+  fields_tag_group: z.array(z.string()).optional(),
+});
+
+const getTagGroupTagsSchema = z.object({
+  tag_group_id: z.string(),
+  fields_tag: z.array(z.string()).optional(),
+  page_cursor: z.string().optional(),
 });
 
 export async function handleTagTool(
@@ -465,6 +547,28 @@ export async function handleTagTool(
       const input = tagResourceSchema.parse(args);
       await client.removeTagFromResource(input.tag_id, input.resource_type, input.resource_id);
       return { success: true, message: `Tag ${input.tag_id} removed from ${input.resource_type} ${input.resource_id}` };
+    }
+
+    case 'klaviyo_tags_get_resources': {
+      const input = getTaggedResourcesSchema.parse(args);
+      return client.getTaggedResources(input.tag_id, input.resource_type, {
+        page_cursor: input.page_cursor,
+      });
+    }
+
+    case 'klaviyo_tags_get_tag_group': {
+      const input = getTagTagGroupSchema.parse(args);
+      return client.getTagTagGroup(input.tag_id, {
+        fields_tag_group: input.fields_tag_group,
+      });
+    }
+
+    case 'klaviyo_tag_groups_get_tags': {
+      const input = getTagGroupTagsSchema.parse(args);
+      return client.getTagGroupTags(input.tag_group_id, {
+        fields_tag: input.fields_tag,
+        page_cursor: input.page_cursor,
+      });
     }
 
     default:

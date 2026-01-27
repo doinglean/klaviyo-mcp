@@ -2117,6 +2117,116 @@ export class KlaviyoClient {
     return this.request<unknown>(`/api/flow-messages/${messageId}`, { params });
   }
 
+  async deleteFlow(flowId: string): Promise<void> {
+    await this.request<void>(`/api/flows/${flowId}`, { method: 'DELETE' });
+  }
+
+  async updateFlowAction(actionId: string, options: {
+    status?: 'draft' | 'live' | 'manual';
+  }): Promise<unknown> {
+    const attributes: Record<string, unknown> = {};
+    if (options.status) attributes.status = options.status;
+
+    const body = {
+      data: {
+        type: 'flow-action',
+        id: actionId,
+        attributes,
+      },
+    };
+    return this.request<unknown>(`/api/flow-actions/${actionId}`, { method: 'PATCH', body });
+  }
+
+  async getFlowActionMessages(actionId: string, options: {
+    fields_flow_message?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+    if (options.fields_flow_message?.length) {
+      params['fields[flow-message]'] = options.fields_flow_message.join(',');
+    }
+    return this.request<unknown>(`/api/flow-actions/${actionId}/flow-messages`, { params });
+  }
+
+  async getFlowActionFlow(actionId: string, options: {
+    fields_flow?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_flow?.length) {
+      params['fields[flow]'] = options.fields_flow.join(',');
+    }
+    return this.request<unknown>(`/api/flow-actions/${actionId}/flow`, { params });
+  }
+
+  async getFlowMessageTemplate(messageId: string, options: {
+    fields_template?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_template?.length) {
+      params['fields[template]'] = options.fields_template.join(',');
+    }
+    return this.request<unknown>(`/api/flow-messages/${messageId}/template`, { params });
+  }
+
+  async getFlowMessageAction(messageId: string, options: {
+    fields_flow_action?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_flow_action?.length) {
+      params['fields[flow-action]'] = options.fields_flow_action.join(',');
+    }
+    return this.request<unknown>(`/api/flow-messages/${messageId}/flow-action`, { params });
+  }
+
+  async createFlowValuesReport(options: {
+    filter: string;
+    statistics?: string[];
+    timeframe?: { start?: string; end?: string };
+  }): Promise<unknown> {
+    const attributes: Record<string, unknown> = {
+      filter: options.filter,
+      statistics: options.statistics || [
+        'recipients', 'opens', 'open_rate', 'clicks', 'click_rate',
+        'revenue', 'revenue_per_recipient', 'unsubscribes', 'spam_complaints'
+      ],
+    };
+    if (options.timeframe) attributes.timeframe = options.timeframe;
+
+    const body = {
+      data: {
+        type: 'flow-values-report',
+        attributes,
+      },
+    };
+    return this.request<unknown>('/api/flow-values-reports', { method: 'POST', body });
+  }
+
+  async createFlowSeriesReport(options: {
+    filter: string;
+    statistics?: string[];
+    timeframe?: { start?: string; end?: string };
+    interval?: string;
+  }): Promise<unknown> {
+    const attributes: Record<string, unknown> = {
+      filter: options.filter,
+      statistics: options.statistics || [
+        'recipients', 'opens', 'open_rate', 'clicks', 'click_rate', 'revenue'
+      ],
+    };
+    if (options.timeframe) attributes.timeframe = options.timeframe;
+    if (options.interval) attributes.interval = options.interval;
+
+    const body = {
+      data: {
+        type: 'flow-series-report',
+        attributes,
+      },
+    };
+    return this.request<unknown>('/api/flow-series-reports', { method: 'POST', body });
+  }
+
   // ============================================================
   // TAG METHODS
   // ============================================================
@@ -2298,5 +2408,42 @@ export class KlaviyoClient {
       data: [{ type: resourceType, id: resourceId }],
     };
     await this.request<void>(`/api/tags/${tagId}/relationships/${resourceType}s`, { method: 'DELETE', body });
+  }
+
+  async getTaggedResources(tagId: string, resourceType: 'campaigns' | 'flows' | 'lists' | 'segments', options: {
+    fields?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+    const singularType = resourceType.slice(0, -1); // Remove 's' for field name
+    if (options.fields?.length) {
+      params[`fields[${singularType}]`] = options.fields.join(',');
+    }
+    return this.request<unknown>(`/api/tags/${tagId}/${resourceType}`, { params });
+  }
+
+  async getTagTagGroup(tagId: string, options: {
+    fields_tag_group?: string[];
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {};
+    if (options.fields_tag_group?.length) {
+      params['fields[tag-group]'] = options.fields_tag_group.join(',');
+    }
+    return this.request<unknown>(`/api/tags/${tagId}/tag-group`, { params });
+  }
+
+  async getTagGroupTags(tagGroupId: string, options: {
+    fields_tag?: string[];
+    page_cursor?: string;
+  } = {}): Promise<unknown> {
+    const params: Record<string, string | number | undefined> = {
+      'page[cursor]': options.page_cursor,
+    };
+    if (options.fields_tag?.length) {
+      params['fields[tag]'] = options.fields_tag.join(',');
+    }
+    return this.request<unknown>(`/api/tag-groups/${tagGroupId}/tags`, { params });
   }
 }
