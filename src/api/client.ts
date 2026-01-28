@@ -10,6 +10,15 @@ import type {
   CreateProfileInput,
   UpdateProfileInput,
 } from '../types/klaviyo.js';
+import { RATE_LIMIT_CONFIG, API_CONFIG } from '../config.js';
+import { logger } from '../utils/logger.js';
+import {
+  getCache,
+  setCache,
+  generateCacheKey,
+  isCacheEnabled,
+  invalidateCache,
+} from '../utils/cache.js';
 
 // Error classes
 export class KlaviyoError extends Error {
@@ -58,6 +67,8 @@ interface RequestOptions {
   method?: string;
   body?: unknown;
   params?: Record<string, string | number | undefined>;
+  skipCache?: boolean;
+  fallback?: () => Promise<unknown>;
 }
 
 export class KlaviyoClient {
@@ -78,8 +89,25 @@ export class KlaviyoClient {
     this.timeout = options?.timeout ?? 30000;
   }
 
+  /**
+   * Calculate delay for exponential backoff with jitter
+   */
+  private calculateBackoffDelay(attempt: number): number {
+    const { initialDelayMs, maxDelayMs, backoffFactor, jitterMs } = RATE_LIMIT_CONFIG;
+    const exponentialDelay = initialDelayMs * Math.pow(backoffFactor, attempt);
+    const jitter = Math.random() * jitterMs;
+    return Math.min(exponentialDelay + jitter, maxDelayMs);
+  }
+
+  /**
+   * Sleep for specified milliseconds
+   */
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
   private async request<T>(path: string, options: RequestOptions = {}): Promise<T> {
-    const { method = 'GET', body, params } = options;
+    const { method = 'GET', body, params, skipCache = false, fallback } = options;
 
     // Build URL with query params
     const url = new URL(`${this.baseUrl}${path}`);
@@ -92,44 +120,129 @@ export class KlaviyoClient {
       }
     }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+    const urlString = url.toString();
+    const cacheKey = generateCacheKey(method, urlString, params);
 
-    try {
-      const response = await fetch(url.toString(), {
-        method,
-        headers: {
-          'Authorization': `Klaviyo-API-Key ${this.apiKey}`,
-          'revision': this.revision,
-          'Content-Type': 'application/vnd.api+json',
-          'Accept': 'application/vnd.api+json',
-        },
-        body: body ? JSON.stringify(body) : undefined,
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        await this.handleErrorResponse(response);
+    // Check cache for GET requests
+    if (method === 'GET' && !skipCache && isCacheEnabled()) {
+      const cached = getCache<T>(cacheKey);
+      if (cached !== undefined) {
+        logger.debug(`Cache hit for ${method} ${path}`);
+        return cached;
       }
-
-      // Handle 204 No Content
-      if (response.status === 204) {
-        return {} as T;
-      }
-
-      return await response.json() as T;
-    } catch (error) {
-      clearTimeout(timeoutId);
-      if (error instanceof KlaviyoError) {
-        throw error;
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new KlaviyoError('Request timeout', 408);
-      }
-      throw new KlaviyoError(`Request failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
+
+    // Retry loop with exponential backoff
+    let lastError: Error | undefined;
+    for (let attempt = 0; attempt <= RATE_LIMIT_CONFIG.maxRetries; attempt++) {
+      if (attempt > 0) {
+        const delay = this.calculateBackoffDelay(attempt - 1);
+        logger.debug(`Retry attempt ${attempt}/${RATE_LIMIT_CONFIG.maxRetries} after ${delay}ms`);
+        await this.sleep(delay);
+      }
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.timeout);
+      const startTime = Date.now();
+
+      try {
+        logger.request(method, path, body);
+
+        const response = await fetch(urlString, {
+          method,
+          headers: {
+            'Authorization': `Klaviyo-API-Key ${this.apiKey}`,
+            'revision': this.revision,
+            'Content-Type': 'application/vnd.api+json',
+            'Accept': 'application/vnd.api+json',
+          },
+          body: body ? JSON.stringify(body) : undefined,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+        logger.response(method, path, response.status, Date.now() - startTime);
+
+        if (!response.ok) {
+          // For rate limits, retry automatically
+          if (response.status === 429) {
+            const retryAfter = response.headers.get('Retry-After');
+            const retryMs = retryAfter ? parseInt(retryAfter, 10) * 1000 : this.calculateBackoffDelay(attempt);
+            logger.warn(`Rate limited. Waiting ${retryMs}ms before retry.`);
+            await this.sleep(retryMs);
+            continue; // Retry
+          }
+          await this.handleErrorResponse(response);
+        }
+
+        // Handle 204 No Content
+        if (response.status === 204) {
+          return {} as T;
+        }
+
+        const result = await response.json() as T;
+
+        // Cache successful GET responses
+        if (method === 'GET' && !skipCache) {
+          setCache(cacheKey, result);
+        }
+
+        // Invalidate cache for write operations
+        if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method)) {
+          const resourcePath = path.split('/').slice(0, 3).join('/');
+          invalidateCache(resourcePath);
+        }
+
+        return result;
+      } catch (error) {
+        clearTimeout(timeoutId);
+        lastError = error instanceof Error ? error : new Error(String(error));
+
+        if (error instanceof KlaviyoRateLimitError) {
+          // Already handled above, but if we get here, continue retrying
+          continue;
+        }
+
+        if (error instanceof KlaviyoError) {
+          // Don't retry client errors (4xx except 429)
+          if (error.statusCode && error.statusCode >= 400 && error.statusCode < 500) {
+            // Try fallback if available
+            if (fallback) {
+              logger.warn(`Request failed with ${error.statusCode}, trying fallback`);
+              try {
+                return await fallback() as T;
+              } catch (fallbackError) {
+                logger.error(`Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown'}`);
+              }
+            }
+            throw error;
+          }
+          // Retry server errors (5xx)
+          logger.warn(`Server error ${error.statusCode}, retrying...`);
+          continue;
+        }
+
+        if (error instanceof Error && error.name === 'AbortError') {
+          logger.warn('Request timeout, retrying...');
+          continue;
+        }
+
+        // Unknown error, retry
+        logger.warn(`Unknown error: ${lastError.message}, retrying...`);
+      }
+    }
+
+    // All retries exhausted - try fallback
+    if (fallback) {
+      logger.warn('All retries exhausted, trying fallback');
+      try {
+        return await fallback() as T;
+      } catch (fallbackError) {
+        logger.error(`Fallback also failed: ${fallbackError instanceof Error ? fallbackError.message : 'Unknown'}`);
+      }
+    }
+
+    throw lastError || new KlaviyoError(`Request failed after ${RATE_LIMIT_CONFIG.maxRetries} retries`);
   }
 
   private async handleErrorResponse(response: Response): Promise<never> {

@@ -1,12 +1,12 @@
 {
   "name": "klaviyo-mcp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Model Context Protocol server for Klaviyo email marketing API",
   "type": "module",
-  "main": "dist/index.mjs",
-  "types": "dist/index.d.mts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
   "bin": {
-    "klaviyo-mcp": "dist/index.mjs"
+    "klaviyo-mcp": "dist/index.js"
   },
   "scripts": {
     "build": "tsup",

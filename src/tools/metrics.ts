@@ -2,21 +2,13 @@ import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KlaviyoClient } from '../api/client.js';
 import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
+import { VALID_MEASUREMENTS, VALID_INTERVALS, VALID_METRIC_DIMENSIONS } from '../config.js';
+import { logger } from '../utils/logger.js';
 
-// Available measurements for metric aggregates
-const METRIC_MEASUREMENTS = ['count', 'sum_value', 'unique'];
-
-// Available intervals for metric aggregates
-const METRIC_INTERVALS = ['hour', 'day', 'week', 'month'];
-
-// Available "by" dimensions for metric aggregates
-const METRIC_BY_DIMENSIONS = [
-  '$attributed_channel', '$attributed_flow', '$attributed_message', '$attributed_variation',
-  '$campaign_channel', '$flow', '$flow_channel', '$message', '$message_send_cohort',
-  '$variation', '$variation_send_cohort', '$value_currency',
-  'Campaign Name', 'Email Domain', 'List', 'Message Name', 'Subject', 'URL',
-  'Bounce Type', 'Client Type', 'Client Name', 'Failure Type',
-];
+// Re-export for schema compatibility
+const METRIC_MEASUREMENTS = [...VALID_MEASUREMENTS];
+const METRIC_INTERVALS = [...VALID_INTERVALS];
+const METRIC_BY_DIMENSIONS = [...VALID_METRIC_DIMENSIONS];
 
 // Metric fields
 const METRIC_FIELDS = [
@@ -28,7 +20,21 @@ export function getMetricTools(): Tool[] {
     // === METRICS LIST & GET ===
     {
       name: 'klaviyo_metrics_list',
-      description: 'List all metrics/event types (compact: id, name, integration). For full metric details, use klaviyo_metrics_get(metric_id). Fetches ALL metrics automatically.',
+      description: `List all metrics/event types - USE THIS FIRST to find metric IDs for analytics.
+
+COMMON METRICS TO FIND:
+- "Placed Order" (Shopify): For revenue analytics - use integration_name="Shopify"
+- "Opened Email": For email engagement
+- "Clicked Email": For click tracking
+- "Received Email": For delivery tracking
+
+WORKFLOW:
+1. Call this to find the metric_id you need
+2. Use that metric_id in klaviyo_metrics_query_aggregate or klaviyo_metrics_query_by_flow
+
+FILTERING: Use integration_name to narrow results (e.g., "Shopify", "API", "Klaviyo")
+
+Returns compact format by default (id, name, integration).`,
       inputSchema: {
         type: 'object',
         properties: {
@@ -104,57 +110,82 @@ export function getMetricTools(): Tool[] {
     // === METRIC AGGREGATES (ANALYTICS) ===
     {
       name: 'klaviyo_metrics_query_aggregate',
-      description: 'Query aggregated metric data for analytics. This is the main analytics endpoint - use it to get counts, sums, and unique values over time with various groupings.',
+      description: `Query aggregated metric data - the MAIN ANALYTICS ENDPOINT.
+
+WORKFLOW TO GET METRIC ID:
+1. Use klaviyo_metrics_list to find the metric (e.g., "Placed Order", "Opened Email")
+2. Use the metric_id from the response in this query
+
+MEASUREMENTS (required):
+- "count": Number of events (e.g., how many orders)
+- "sum_value": Total value (USE THIS FOR REVENUE - sums the "value" field)
+- "unique": Unique profiles (e.g., unique customers)
+
+GROUPING ("by" parameter):
+- $flow, $attributed_flow: Group by flow
+- $campaign_channel: Group by campaign
+- Campaign Name, Message Name: Group by name
+- Use multiple: by=["$flow","$flow_channel"]
+
+FILTER SYNTAX (array of strings):
+- Date: "greater-or-equal(datetime,2024-01-01T00:00:00)"
+- Date: "less-than(datetime,2024-01-31T23:59:59)"
+- Multiple filters = implicit AND
+
+EXAMPLE - Revenue by flow last 30 days:
+  metric_id="VAHVeq" (Placed Order)
+  measurements=["sum_value"]
+  by=["$attributed_flow"]
+  start_date="2024-01-01", end_date="2024-01-31"`,
       inputSchema: {
         type: 'object',
         properties: {
           metric_id: {
             type: 'string',
-            description: 'The metric ID to query',
+            description: 'The metric ID to query. REQUIRED. Find it with klaviyo_metrics_list first.',
           },
           measurements: {
             type: 'array',
             items: { type: 'string', enum: METRIC_MEASUREMENTS },
-            description: 'What to measure: "count" (events), "sum_value" (total value), "unique" (unique profiles)',
+            description: 'What to measure: "count" (event count), "sum_value" (USE FOR REVENUE), "unique" (unique profiles)',
           },
           filter: {
             type: 'array',
-            description: 'Filters to apply to the query',
+            description: 'Filter strings. Use start_date/end_date instead for simpler date filtering.',
             items: {
               type: 'string',
-              description: 'Filter string (e.g., "greater-or-equal(datetime,2024-01-01)")',
+              description: 'e.g., "greater-or-equal(datetime,2024-01-01T00:00:00)"',
             },
           },
           interval: {
             type: 'string',
             enum: METRIC_INTERVALS,
-            description: 'Time interval for grouping: hour, day, week, month',
+            description: 'Time grouping for time series: hour, day, week, month',
           },
           by: {
             type: 'array',
-            items: { type: 'string' },
-            description: 'Dimensions to group by (e.g., "$flow", "Campaign Name", "$attributed_message")',
+            items: { type: 'string', enum: METRIC_BY_DIMENSIONS },
+            description: 'Group results by dimension. Use $flow for flow breakdown, $attributed_flow for revenue attribution.',
           },
           timezone: {
             type: 'string',
-            description: 'Timezone for the query (e.g., "America/New_York")',
+            description: 'Timezone (e.g., "Europe/Berlin", "America/New_York"). Default: UTC',
           },
           page_size: {
             type: 'number',
-            description: 'Number of results per page (default 500)',
+            description: 'Results per page (default 500, max 500)',
           },
           page_cursor: {
             type: 'string',
             description: 'Cursor for pagination',
           },
-          // Convenience filters
           start_date: {
             type: 'string',
-            description: 'Start date for the query (ISO 8601 or YYYY-MM-DD)',
+            description: 'Start date (YYYY-MM-DD or ISO 8601). Easier than filter array.',
           },
           end_date: {
             type: 'string',
-            description: 'End date for the query (ISO 8601 or YYYY-MM-DD)',
+            description: 'End date (YYYY-MM-DD or ISO 8601). Easier than filter array.',
           },
         },
         required: ['metric_id', 'measurements'],
@@ -227,13 +258,33 @@ export function getMetricTools(): Tool[] {
     },
     {
       name: 'klaviyo_metrics_query_by_flow',
-      description: 'Get metric totals grouped by flow. Useful for comparing flow performance.',
+      description: `Get metric totals GROUPED BY FLOW - ideal for comparing flow performance and REVENUE.
+
+THIS IS THE BEST TOOL FOR: "How much revenue did each flow generate?"
+
+WORKFLOW FOR FLOW REVENUE:
+1. Find "Placed Order" metric: klaviyo_metrics_list(integration_name="Shopify")
+   The metric_id will be something like "VAHVeq"
+2. Call this tool with:
+   - metric_id: the "Placed Order" metric ID
+   - measurement: "sum_value" (NOT "count"!) to get actual revenue
+   - start_date/end_date: your date range
+
+MEASUREMENTS:
+- "count": Number of events (e.g., number of orders)
+- "sum_value": USE THIS FOR REVENUE - sums the monetary values
+- "unique": Unique customers
+
+NOTE: This automatically groups by $flow and $flow_channel.
+
+EXAMPLE: Revenue by flow for last 30 days
+  metric_id="VAHVeq", measurement="sum_value", start_date="2024-01-01", end_date="2024-01-31"`,
       inputSchema: {
         type: 'object',
         properties: {
           metric_id: {
             type: 'string',
-            description: 'The metric ID',
+            description: 'The metric ID. For revenue, find "Placed Order" via klaviyo_metrics_list(integration_name="Shopify")',
           },
           start_date: {
             type: 'string',
@@ -246,7 +297,7 @@ export function getMetricTools(): Tool[] {
           measurement: {
             type: 'string',
             enum: METRIC_MEASUREMENTS,
-            description: 'What to measure (default: count)',
+            description: '"count" for event count, "sum_value" FOR REVENUE, "unique" for unique profiles. Default: count',
           },
         },
         required: ['metric_id', 'start_date', 'end_date'],
@@ -396,7 +447,28 @@ export async function handleMetricTool(
 
     case 'klaviyo_metrics_query_aggregate': {
       const input = queryAggregateSchema.parse(args);
-      return client.queryMetricAggregate(input);
+
+      // Auto-correct invalid "by" dimensions
+      let by = input.by;
+      if (by && by.length > 0) {
+        const validDimensions = by.filter(dim =>
+          VALID_METRIC_DIMENSIONS.includes(dim as typeof VALID_METRIC_DIMENSIONS[number])
+        );
+        const invalidDimensions = by.filter(dim =>
+          !VALID_METRIC_DIMENSIONS.includes(dim as typeof VALID_METRIC_DIMENSIONS[number])
+        );
+
+        if (invalidDimensions.length > 0) {
+          logger.warn(`Invalid dimensions removed: ${invalidDimensions.join(', ')}. Valid: ${VALID_METRIC_DIMENSIONS.slice(0, 5).join(', ')}...`);
+        }
+
+        by = validDimensions.length > 0 ? validDimensions : undefined;
+      }
+
+      return client.queryMetricAggregate({
+        ...input,
+        by,
+      });
     }
 
     case 'klaviyo_metrics_query_timeseries': {

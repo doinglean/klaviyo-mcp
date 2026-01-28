@@ -2,6 +2,8 @@ import { z } from 'zod';
 import type { Tool } from '@modelcontextprotocol/sdk/types.js';
 import type { KlaviyoClient } from '../api/client.js';
 import { fetchAllPages, type PaginatedResponse } from '../utils/pagination.js';
+import { VALID_FLOW_STATISTICS, DEFAULT_STATISTICS } from '../config.js';
+import { logger } from '../utils/logger.js';
 
 // Sort options for flows
 const FLOW_SORT_OPTIONS = [
@@ -448,13 +450,28 @@ export function getFlowTools(): Tool[] {
     },
     {
       name: 'klaviyo_flow_values_report',
-      description: 'Generate a flow performance report with aggregate values. Get metrics like recipients, opens, clicks, revenue for flows.',
+      description: `Generate a flow performance report with aggregate values.
+
+REQUIRED: At least one of flow_id, flow_ids, or filter must be provided.
+
+AVAILABLE STATISTICS:
+- Engagement: recipients, opens, open_rate, clicks, click_rate
+- Delivery: deliveries, delivery_rate, bounces, bounce_rate
+- Negative: unsubscribes, unsubscribe_rate, spam_complaints
+
+FOR REVENUE DATA: Use klaviyo_metrics_query_by_flow instead:
+1. Find "Placed Order" metric: klaviyo_metrics_list(integration_name="Shopify")
+2. Use: klaviyo_metrics_query_by_flow(metric_id, measurement="sum_value")
+   This groups revenue by flow to show which flows generate most revenue.
+
+EXAMPLE: Get engagement stats for flows
+  flow_ids=["abc123","def456"], statistics=["recipients","opens","open_rate","clicks"]`,
       inputSchema: {
         type: 'object',
         properties: {
           flow_id: {
             type: 'string',
-            description: 'Filter by specific flow ID',
+            description: 'Filter by specific flow ID (REQUIRED: provide this OR flow_ids OR filter)',
           },
           flow_ids: {
             type: 'array',
@@ -471,19 +488,19 @@ export function getFlowTools(): Tool[] {
               type: 'string',
               enum: [
                 'recipients', 'opens', 'open_rate', 'clicks', 'click_rate',
-                'revenue', 'revenue_per_recipient', 'unsubscribes', 'spam_complaints',
-                'bounces', 'bounce_rate', 'deliveries', 'delivery_rate'
+                'deliveries', 'delivery_rate', 'bounces', 'bounce_rate',
+                'unsubscribes', 'unsubscribe_rate', 'spam_complaints'
               ],
             },
-            description: 'Metrics to include in report',
+            description: 'Metrics to include. Default: engagement metrics. NOTE: "revenue" is not valid here - use klaviyo_metrics_query_by_flow for revenue.',
           },
           timeframe_start: {
             type: 'string',
-            description: 'ISO 8601 datetime - start of timeframe',
+            description: 'Start of timeframe (e.g., "2024-01-01T00:00:00Z" or "2024-01-01")',
           },
           timeframe_end: {
             type: 'string',
-            description: 'ISO 8601 datetime - end of timeframe',
+            description: 'End of timeframe (e.g., "2024-01-31T23:59:59Z" or "2024-01-31")',
           },
         },
       },
@@ -780,7 +797,7 @@ export async function handleFlowTool(
 
     case 'klaviyo_flow_values_report': {
       const input = flowValuesReportSchema.parse(args);
-      
+
       // Build filter
       let filter = input.filter;
       if (!filter) {
@@ -790,9 +807,31 @@ export async function handleFlowTool(
           filter = `any(flow_id,["${input.flow_ids.join('","')}"])`;
         }
       }
-      
+
       if (!filter) {
-        throw new Error('At least one of flow_id, flow_ids, or filter is required');
+        throw new Error('At least one of flow_id, flow_ids, or filter is required. For revenue data, use klaviyo_metrics_query_by_flow instead.');
+      }
+
+      // Auto-correct invalid statistics
+      let statistics = input.statistics || [...DEFAULT_STATISTICS.engagement];
+      if (statistics.length > 0) {
+        const validStats = statistics.filter(stat =>
+          VALID_FLOW_STATISTICS.includes(stat as typeof VALID_FLOW_STATISTICS[number])
+        );
+        const invalidStats = statistics.filter(stat =>
+          !VALID_FLOW_STATISTICS.includes(stat as typeof VALID_FLOW_STATISTICS[number])
+        );
+
+        if (invalidStats.length > 0) {
+          logger.warn(`Invalid statistics removed: ${invalidStats.join(', ')}. For revenue data, use klaviyo_metrics_query_by_flow with measurement="sum_value".`);
+          // If "revenue" was requested, add a hint about the correct approach
+          if (invalidStats.includes('revenue')) {
+            logger.warn('TIP: For revenue data grouped by flow, use: klaviyo_metrics_query_by_flow(metric_id="<Placed Order metric>", measurement="sum_value")');
+          }
+        }
+
+        // Use valid stats or fall back to defaults
+        statistics = validStats.length > 0 ? validStats : [...DEFAULT_STATISTICS.engagement];
       }
 
       const timeframe = input.timeframe_start || input.timeframe_end ? {
@@ -802,7 +841,7 @@ export async function handleFlowTool(
 
       return client.createFlowValuesReport({
         filter,
-        statistics: input.statistics,
+        statistics,
         timeframe,
       });
     }
