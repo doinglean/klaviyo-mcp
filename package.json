@@ -1,6 +1,6 @@
 {
   "name": "klaviyo-mcp",
-  "version": "0.2.0",
+  "version": "1.0.0",
   "description": "Model Context Protocol server for Klaviyo email marketing API",
   "type": "module",
   "main": "dist/index.js",
@@ -26,7 +26,7 @@
     "claude",
     "ai"
   ],
-  "author": "",
+  "author": "Lars Mueller",
   "license": "MIT",
   "repository": {
     "type": "git",

@@ -26,6 +26,9 @@ npm-debug.log*
 # Test coverage
 coverage/
 
+# Claude Code
+.claude/
+
 # Misc
 *.tgz
 .npmrc

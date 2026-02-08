@@ -2,8 +2,22 @@
 
 [![npm version](https://badge.fury.io/js/klaviyo-mcp.svg)](https://www.npmjs.com/package/klaviyo-mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-green)](https://nodejs.org/)
+[![MCP](https://img.shields.io/badge/MCP-Compatible-blue)](https://modelcontextprotocol.io/)
 
-A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that provides AI assistants like Claude with seamless access to Klaviyo's email marketing and automation platform.
+> **107 tools** to control Klaviyo from Claude. Profiles, campaigns, flows, segments, templates, events, metrics, tags -- all through natural language.
+
+A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server that gives AI assistants like Claude full access to Klaviyo's email marketing and automation platform. Just ask Claude to manage your subscribers, send campaigns, analyze flow performance, or organize your marketing -- it handles the API calls for you.
+
+## Why?
+
+If you use Klaviyo for email/SMS marketing and Claude as your AI assistant, this MCP server bridges the two. Instead of clicking through dashboards or writing API scripts, you just tell Claude what you need:
+
+```
+"Show me all profiles that subscribed this week"
+"Create a campaign for our VIP list and send it"
+"What's the revenue from my Abandoned Cart flow this month?"
+```
 
 ## Overview
 
@@ -16,7 +30,7 @@ This MCP server wraps Klaviyo's REST API, enabling AI assistants to:
 - Query segments and analytics
 - Work with email templates
 
-**107 tools** covering Klaviyo's full marketing automation stack. Built with TypeScript and the official MCP SDK for reliable, type-safe interactions.
+Built with TypeScript and the official MCP SDK for reliable, type-safe interactions.
 
 ## Features
 
@@ -66,6 +80,18 @@ This MCP server wraps Klaviyo's REST API, enabling AI assistants to:
 - Tag groups for hierarchical organization
 - Tag/untag campaigns, flows, lists, segments
 - Query tagged resources
+
+## Quick Start
+
+```bash
+# Install
+npm install -g klaviyo-mcp
+
+# Add to Claude Code
+claude mcp add klaviyo-mcp -e KLAVIYO_API_KEY=pk_your_key_here
+
+# Done. Ask Claude anything about your Klaviyo account.
+```
 
 ## Installation
 
@@ -384,11 +410,29 @@ KLAVIYO_API_KEY=pk_your_key npm run dev
 
 ```
 src/
-├── index.ts          # Entry point
-├── server.ts         # MCP server setup
-├── client/           # Klaviyo API client
+├── index.ts          # Entry point & MCP server setup
+├── config.ts         # Centralized configuration
+├── resources.ts      # MCP resource definitions
+├── api/
+│   └── client.ts     # Klaviyo REST API client
 ├── tools/            # MCP tool implementations
-└── utils/            # Helpers (pagination, filters)
+│   ├── profiles.ts   # Profile management (list, create, update, subscribe)
+│   ├── lists.ts      # List operations (CRUD, member management)
+│   ├── campaigns.ts  # Campaign lifecycle (create, send, analyze)
+│   ├── events.ts     # Event tracking & queries
+│   ├── segments.ts   # Segment queries & profiles
+│   ├── templates.ts  # Template management & rendering
+│   ├── metrics.ts    # Analytics & aggregate queries
+│   ├── flows.ts      # Flow automation & analytics
+│   ├── tags.ts       # Tags & tag groups
+│   └── index.ts      # Tool registry
+├── types/
+│   └── klaviyo.ts    # TypeScript type definitions
+└── utils/
+    ├── cache.ts      # Response caching
+    ├── logger.ts     # Structured logging
+    ├── pagination.ts # Auto-pagination helpers
+    └── validation.ts # Input validation
 ```
 
 ## Contributing
